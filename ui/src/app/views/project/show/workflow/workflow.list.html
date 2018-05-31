@@ -1,9 +1,6 @@
 <div class="ui grid">
-    <div class="six wide column">
-        <h3>{{ 'project_workflows_list' | translate }}</h3>
-    </div>
-    <div class="four wide column centered">
-      <a class="ui blue button" [routerLink]="['./workflow']">{{ 'workflow_create_btn' | translate }}</a>
+    <div class="ten wide column">
+        <h2 translate="project_workflows_list"></h2>
     </div>
     <div class="right aligned six wide column" *ngIf="project.permission === 7">
       <div class="ui icon input">
@@ -12,16 +9,22 @@
       </div>
     </div>
 </div>
-<div class="ui segment">
-    <div *ngIf="project.workflow_names && project.workflow_names.length > 0;then workflows;else noworkflows"></div>
-    <ng-template #workflows>
-        <div class="ui stackable four column grid">
-            <div class="center aligned column" *ngFor="let wfName of filteredWorkflows">
-                <a [routerLink]="['./workflow', wfName]">{{wfName}}</a>
+<div *ngIf="project.workflow_names && project.workflow_names.length > 0;then workflows;else noworkflows"></div>
+<ng-template #workflows>
+    <div class="ui stackable four cards">
+        <a [routerLink]="['./workflow']" class="card button">
+            <div class="content">
+                <i class="plus icon" aria-hidden="true"></i>
+                <span translate="workflow_create_btn"></span>
             </div>
-        </div>
-    </ng-template>
-    <ng-template #noworkflows>
-        <span>{{ 'project_no_workflow' | translate }}</span>
-    </ng-template>
-</div>
+        </a>
+        <a [routerLink]="['./workflow', wfName]" class="card" *ngFor="let wfName of filteredWorkflows">
+            <div class="content">
+                <div [innerText]="wfName"></div>
+            </div>
+        </a>
+    </div>
+</ng-template>
+<ng-template #noworkflows>
+    <span translate="project_no_workflow"></span>
+</ng-template>

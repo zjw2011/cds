@@ -42,20 +42,18 @@ pre {
 
 // View style
 .CDSbreadcrumb {
-  padding: 15px;
-  z-index: 100;
-  height: $navbarHeight;
   position: relative;
-  background: #FFFFFF;
-  box-shadow: 0px 1px 2px 0 rgba(34, 36, 38, 0.15);
-  margin: 0;
-  padding: 1em 1em;
-  border: 1px solid rgba(34, 36, 38, 0.15);
+  background: #fff;
+  padding: 30px 30px 0;
 }
 
 .CDSmenu {
+  background: #fff;
   padding: 0.25em 30px 0 30px;
-  height: 40px;
+
+  .ui.secondary.pointing.menu {
+    border: 0;
+  } 
 }
 
 .scrollingContent {
@@ -68,10 +66,10 @@ pre {
     width: 100%;
     height: 100%;
     position: absolute;
-    padding: 0px 100px 0px 100px;
+    padding: 0px 30px 0px 30px;
 
     .viewContent {
-      padding-top: 25px;
+      padding-top: 30px;
     }
   }
 }
@@ -152,3 +150,11 @@ pre {
   transform: translateX(-50%);
 }
 // End table
+
+#AppComponent .card.button {
+  background-color: #4fa3e3;
+  font-weight: bold;
+  color: #fff;
+  box-shadow: none;
+  text-align: center;
+}

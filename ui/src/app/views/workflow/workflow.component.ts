@@ -1,5 +1,4 @@
 import {Component, ViewChild, OnInit} from '@angular/core';
-import {SemanticSidebarComponent} from 'ng-semantic/ng-semantic';
 import {ActivatedRoute, NavigationStart, Router} from '@angular/router';
 import {Project} from '../../model/project.model';
 import {Subscription} from 'rxjs/Subscription';
@@ -11,7 +10,6 @@ import {WorkflowCoreService} from '../../service/workflow/workflow.core.service'
 import {ToastService} from '../../shared/toast/ToastService';
 import {TranslateService} from '@ngx-translate/core';
 import {finalize} from 'rxjs/operators';
-import {WorkflowSidebarMode, WorkflowSidebarStore} from '../../service/workflow/workflow.sidebar.store';
 import {WorkflowRunService} from '../../service/workflow/run/workflow.run.service';
 import {WorkflowEventStore} from '../../service/workflow/workflow.event.store';
 import {EventStore} from '../../service/event/event.store';
@@ -33,19 +31,11 @@ export class WorkflowComponent implements OnInit {
     loading = true;
     loadingFav = false;
 
-    // Sidebar data
-    sideBarModeSubscription: Subscription;
-    sidebarMode = WorkflowSidebarMode.RUNS;
-    sidebarModes = WorkflowSidebarMode;
-
     asCodeEditorSubscription: Subscription;
     asCodeEditorOpen: boolean;
 
     // Selected node
     selectedNodeID: number;
-
-    @ViewChild('invertedSidebar')
-    sidebar: SemanticSidebarComponent;
 
     constructor(private _activatedRoute: ActivatedRoute,
                 private _workflowStore: WorkflowStore,
@@ -53,7 +43,6 @@ export class WorkflowComponent implements OnInit {
                 private _workflowEventStore: WorkflowEventStore,
                 private _router: Router,
                 private _projectStore: ProjectStore,
-                public _sidebarStore: WorkflowSidebarStore,
                 private _workflowCore: WorkflowCoreService,
                 private _toast: ToastService,
                 private _translate: TranslateService,
@@ -68,8 +57,6 @@ export class WorkflowComponent implements OnInit {
                   this.asCodeEditorOpen = state.open;
               }
           });
-
-        this.initSidebar();
 
         // Workflow subscription
         this._activatedRoute.params.subscribe(p => {
@@ -136,13 +123,6 @@ export class WorkflowComponent implements OnInit {
         });
     }
 
-    initSidebar(): void {
-        // Mode of sidebar
-        this.sideBarModeSubscription = this._sidebarStore.sidebarMode().subscribe(m => {
-            this.sidebarMode = m;
-        })
-    }
-
     ngOnInit() {
         this.projectSubscription = this._projectStore.getProjects(this.project.key)
           .subscribe((proj) => {
@@ -161,10 +141,5 @@ export class WorkflowComponent implements OnInit {
         this._workflowStore.updateFavorite(this.project.key, this.workflow.name)
             .pipe(finalize(() => this.loadingFav = false))
             .subscribe(() => this._toast.success('', this._translate.instant('common_favorites_updated')))
-    }
-
-    changeToRunsMode(): void {
-        this._workflowEventStore.setSelectedNode(null, false);
-        this._sidebarStore.changeMode(WorkflowSidebarMode.RUNS);
     }
 }

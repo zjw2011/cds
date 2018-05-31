@@ -5,42 +5,16 @@
         <i class="pointing star icon" *ngIf="!loadingFav" [class.pointing]="!loading" [ngClass]="{'animated infinite pulse' : loadingFav}" [class.favorite]="workflow?.favorite" [class.unfavorite]="!workflow?.favorite" (click)="updateFav()"></i>
     </div>
 </div>
-<aside class="sidebar scrollable expanded">
-    <div class="floated right">
-        <button class="ui large icon button transparent close-button" (click)="changeToRunsMode()" *ngIf="sidebarMode !== sidebarModes.RUNS">
-            <i class="black close icon"></i>
-        </button>
-    </div>
-    <div class="sidebar-toggle">
-        <ng-container *ngIf="project != null && workflow != null && sidebarMode === sidebarModes.RUNS">
-            <app-workflow-sidebar-run-list [project]="project" [workflow]="workflow"></app-workflow-sidebar-run-list>
-        </ng-container>
-        <ng-container *ngIf="project != null && workflow != null && (sidebarMode === sidebarModes.EDIT_HOOK || sidebarMode === sidebarModes.EDIT_JOIN ||sidebarMode === sidebarModes.EDIT_NODE)">
-            <app-workflow-sidebar-edit
-              [project]="project"
-              [workflow]="workflow">
-            </app-workflow-sidebar-edit>
-        </ng-container>
-        <ng-container *ngIf="project != null && workflow != null && sidebarMode === sidebarModes.RUN_NODE">
-            <app-workflow-sidebar-run-node
-                [project]="project" [workflow]="workflow">
-            </app-workflow-sidebar-run-node>
-        </ng-container>
-        <ng-container *ngIf="project != null && workflow != null && sidebarMode === sidebarModes.RUN_HOOK">
-          <app-workflow-sidebar-run-hook
-            [project]="project">
-        </app-workflow-sidebar-run-hook>
-        </ng-container>
-    </div>
-</aside>
-<section class="content-wrap" *ngIf="!loading && workflow != null">
-    <router-outlet></router-outlet>
-    <app-workflow-sidebar-code
-        [project]="project"
-        [workflow]="workflow"
-        [open]="asCodeEditorOpen">
-    </app-workflow-sidebar-code>
-</section>
-<section class="content-wrap" *ngIf="!workflow">
-    <div class="ui active text loader">{{ 'common_loading_workflow' | translate }}</div>
-</section>
+<div style="display: flex; width: 100%; height: 100%;">
+    <section class="content-wrap" *ngIf="!loading && workflow != null">
+        <router-outlet></router-outlet>
+        <app-workflow-sidebar-code
+            [project]="project"
+            [workflow]="workflow"
+            [open]="asCodeEditorOpen">
+        </app-workflow-sidebar-code>
+    </section>
+    <section class="content-wrap" *ngIf="!workflow">
+        <div class="ui active text loader" translate="common_loading_workflow"></div>
+    </section>
+</div>

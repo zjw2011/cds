@@ -19,6 +19,9 @@ import {WarningModalComponent} from '../../../shared/modal/warning/warning.compo
 import {finalize, first} from 'rxjs/operators';
 import {WorkflowEventStore} from '../../../service/workflow/workflow.event.store';
 
+import {SemanticSidebarComponent} from 'ng-semantic/ng-semantic';
+import {WorkflowSidebarMode, WorkflowSidebarStore} from '../../../service/workflow/workflow.sidebar.store';
+
 @Component({
     selector: 'app-workflow',
     templateUrl: './workflow.html',
@@ -55,9 +58,17 @@ export class WorkflowShowComponent {
     // For usage
     usageCount = 0;
 
+    // Sidebar data
+    sideBarModeSubscription: Subscription;
+    sidebarMode = WorkflowSidebarMode.RUNS;
+    sidebarModes = WorkflowSidebarMode;
+
+    @ViewChild('invertedSidebar')
+    sidebar: SemanticSidebarComponent;
+
     constructor(private activatedRoute: ActivatedRoute, private _workflowStore: WorkflowStore, private _router: Router,
                 private _translate: TranslateService, private _toast: ToastService,
-                private _workflowCoreService: WorkflowCoreService, private _workflowEventStore: WorkflowEventStore) {
+                private _workflowCoreService: WorkflowCoreService, private _workflowEventStore: WorkflowEventStore, public _sidebarStore: WorkflowSidebarStore) {
         // Update data if route change
         this.activatedRoute.data.subscribe(datas => {
             this.project = datas['project'];
@@ -116,6 +127,8 @@ export class WorkflowShowComponent {
                     this._workflowCoreService.toggleAsCodeEditor({open: false, save: false});
                 }
             });
+
+        this.initSidebar();
     }
 
     savePreview() {
@@ -223,5 +236,17 @@ export class WorkflowShowComponent {
         if (this.runWithParamComponent) {
             this.runWithParamComponent.show();
         }
+    }
+
+    initSidebar(): void {
+        // Mode of sidebar
+        this.sideBarModeSubscription = this._sidebarStore.sidebarMode().subscribe(m => {
+            this.sidebarMode = m;
+        })
+    }
+
+    changeToRunsMode(): void {
+        this._workflowEventStore.setSelectedNode(null, false);
+        this._sidebarStore.changeMode(WorkflowSidebarMode.RUNS);
     }
 }

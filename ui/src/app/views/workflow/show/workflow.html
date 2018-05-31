@@ -30,6 +30,7 @@
                     {{'common_advanced' | translate }}</a>
             </sm-menu>
         </div>
+        <div style="display: flex; width: 100%; height: 100%;">
         <div class="scrollingContent">
             <div class="paddingContent">
                 <div class="viewContent" [ngSwitch]="selectedTab">
@@ -138,8 +139,37 @@
             <app-workflow-node-run-param #workflowNodeRunParam [project]="project" [workflow]="detailedWorkflow"
                                          [nodeToRun]="detailedWorkflow.root"></app-workflow-node-run-param>
         </ng-container>
+        <aside class="sidebar scrollable expanded" style="height: 100%;">
+                <div class="floated right">
+                    <button class="ui large icon button transparent close-button" (click)="changeToRunsMode()" *ngIf="sidebarMode !== sidebarModes.RUNS">
+                        <i class="black close icon"></i>
+                    </button>
+                </div>
+                <div class="sidebar-toggle">
+                    <ng-container *ngIf="project != null && detailedWorkflow != null && sidebarMode === sidebarModes.RUNS">
+                        <app-workflow-sidebar-run-list [project]="project" [workflow]="detailedWorkflow"></app-workflow-sidebar-run-list>
+                    </ng-container>
+                    <ng-container *ngIf="project != null && detailedWorkflow != null && (sidebarMode === sidebarModes.EDIT_HOOK || sidebarMode === sidebarModes.EDIT_JOIN ||sidebarMode === sidebarModes.EDIT_NODE)">
+                        <app-workflow-sidebar-edit
+                        [project]="project"
+                        [workflow]="detailedWorkflow">
+                        </app-workflow-sidebar-edit>
+                    </ng-container>
+                    <ng-container *ngIf="project != null && detailedWorkflow != null && sidebarMode === sidebarModes.RUN_NODE">
+                        <app-workflow-sidebar-run-node
+                            [project]="project" [workflow]="detailedWorkflow">
+                        </app-workflow-sidebar-run-node>
+                    </ng-container>
+                    <ng-container *ngIf="project != null && detailedWorkflow != null && sidebarMode === sidebarModes.RUN_HOOK">
+                    <app-workflow-sidebar-run-hook
+                        [project]="project">
+                    </app-workflow-sidebar-run-hook>
+                    </ng-container>
+                </div>
+            </aside>
+            </div>
     </div>
 </ng-template>
 <ng-template #loadingPart>
-    <div class="ui text active loader">{{ 'common_loading_workflow' | translate }}</div>
+    <div class="ui text active loader" translate="common_loading_workflow"></div>
 </ng-template>

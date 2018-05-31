@@ -1,40 +1,15 @@
 @import '../../../common';
 
-$sidebarWidth: 255px;
-
 .content-wrap, .sidebar {
   transition: width 0.1s;
 
 }
-.sidebar {
-  float: left;
-  width: 0;
-  background: #FFFFFF;
-  height: calc( 100% - #{2*$navbarHeight});
-
-  &.scrollable {
-    overflow-y: scroll;
-  }
-
-  &.expanded {
-    width: $sidebarWidth;
-    position: fixed;
-    z-index: 4;
-    border-right: 1px rgba(34, 36, 38, 0.15) solid;
-  }
-  .close-button {
-    padding: 0;
-  }
-  .transparent {
-    background-color: transparent;
-  }
-}
 
 .content-wrap {
-  float: right;
-  width: calc(100% - #{$sidebarWidth});
-  height: calc( 100% - #{$navbarHeight});
-  margin-left: 10px;
+  // width: calc(100% - #{$sidebarWidth});
+  // height: calc( 100% - #{$navbarHeight});
+  width: 100%;
+  height: 100%;
 
   &.expanded {
     width: 100%;
