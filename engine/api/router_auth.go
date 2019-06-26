@@ -77,6 +77,9 @@ func (api *API) authDeprecatedMiddleware(ctx context.Context, w http.ResponseWri
 				return ctx, false, sdk.WrapError(sdk.ErrUnauthorized, "Router> Authorization denied on %s %s for %s sdk.ServiceAgent agent %s : %s", req.Method, req.URL, req.RemoteAddr, getAgent(req), err)
 			}
 		default:
+			if rc.Options["websocket"] == "true" {
+				req.Header.Add(sdk.SessionTokenHeader, req.Header.Get("Sec-WebSocket-Protocol"))
+			}
 			var err error
 			ctx, err = api.Router.AuthDriver.CheckAuth(ctx, w, req)
 			if err != nil {

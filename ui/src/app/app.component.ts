@@ -21,6 +21,7 @@ import { ToastService } from './shared/toast/ToastService';
 import { CDSSharedWorker } from './shared/worker/shared.worker';
 import { CDSWebWorker } from './shared/worker/web.worker';
 import { CDSWorker } from './shared/worker/worker';
+import { WebSocketSubject } from 'rxjs/webSocket';
 
 @Component({
     selector: 'app-root',
@@ -47,6 +48,8 @@ export class AppComponent implements OnInit {
     toasterConfig: any;
     lastPing: number;
     currentTheme: string;
+
+    private websocket: WebSocketSubject<any>;
 
     constructor(
         _translate: TranslateService,
@@ -95,6 +98,7 @@ export class AppComponent implements OnInit {
             } else {
                 this.isConnected = true;
                 this.startSSE();
+                this.startWebSocket2();
             }
             this.startVersionWorker();
         });
@@ -144,6 +148,35 @@ export class AppComponent implements OnInit {
         if (s) {
             s.unsubscribe();
         }
+    }
+
+    startWebSocket2(): void {
+        let exampleSocket = new WebSocket("ws://127.0.0.1:8081/ws", this._authStore.getUser().token);
+        exampleSocket.onopen = function (event) {
+           console.log('Connected', event);
+        };
+
+
+    }
+
+    startWebSocket(): void {
+        let conf = {
+            url: 'ws://127.0.0.1:8081/ws',
+            protocol: this._authStore.getUser().token,
+            headers: {
+                "ee": "df"
+            },
+        };
+
+        this.websocket = new WebSocketSubject(conf);
+        this.websocket.subscribe((message)=> {
+            console.log(message);
+        }, (err) => {
+            console.error(err)
+        }, () => {
+           console.warn('Completed');
+        });
+
     }
 
     startSSE(): void {

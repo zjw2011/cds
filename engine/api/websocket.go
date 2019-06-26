@@ -23,7 +23,11 @@ import (
 	"github.com/ovh/cds/sdk/log"
 )
 
-var upgrader = websocket.Upgrader{} // use default options
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+} // use default options
 
 // websocketBrokerSubscribe is the information needed to subscribe
 type websocketBrokerSubscribe struct {
@@ -166,44 +170,76 @@ func (b *websocketBroker) Start(ctx context.Context, panicCallback func(s string
 
 func (b *websocketBroker) ServeHTTP() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) (err error) {
+		w.Header().Set("Connection", "keep-alive")
+
 		c, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Error("websocket: unable to create connection: %v", err)
 			return
 		}
+
 		defer c.Close()
 
-		// Create User
-		user := deprecatedGetUser(ctx)
-		if err := loadUserPermissions(b.dbFunc(), b.cache, user); err != nil {
-			return sdk.WrapError(err, "websocketBroker.Serve Cannot load user permission")
-		}
+		/*
+				log.Warning("Connected")
+				//c.WriteMessage(websocket.TextMessage, []byte("Connected"))
+				log.Warning("Msg Send")
 
-		uuid := sdk.UUID()
-		client := &websocketBrokerSubscribe{
-			UUID:    uuid,
-			User:    user,
-			isAlive: abool.NewBool(true),
-			conn:    c,
-		}
+				// Create User
+				user := deprecatedGetUser(ctx)
+				if err := loadUserPermissions(b.dbFunc(), b.cache, user); err != nil {
+					return sdk.WrapError(err, "websocketBroker.Serve Cannot load user permission")
+				}
 
-		// Add this client to the map of those that should receive updates
-		b.chanAddClient <- client
+				log.Warning("Load user")
 
-		tick := time.NewTicker(time.Second)
-		defer tick.Stop()
+				uuid := sdk.UUID()
+				client := &websocketBrokerSubscribe{
+					UUID:    uuid,
+					User:    user,
+					isAlive: abool.NewBool(true),
+					conn:    c,
+				}
 
-	leave:
+				log.Warning("Create client")
+
+				// Add this client to the map of those that should receive updates
+				b.chanAddClient <- client
+
+				log.Warning("Client added")
+				tick := time.NewTicker(time.Second)
+				defer tick.Stop()
+
+				log.Warning("Start loop")
+
+			leave:
+				for {
+					select {
+					case <-ctx.Done():
+						log.Warning("websocket.Http: context done")
+						b.chanRemoveClient <- client.UUID
+						break leave
+					case <-r.Context().Done():
+						log.Warning("websocket.Http: client disconnected")
+						b.chanRemoveClient <- client.UUID
+						break leave
+					}
+				}
+				log.Warning("Bonjour Je ferme tout")
+				return nil
+
+		*/
 		for {
-			select {
-			case <-ctx.Done():
-				log.Debug("websocket.Http: context done")
-				b.chanRemoveClient <- client.UUID
-				break leave
-			case <-r.Context().Done():
-				log.Debug("websocket.Http: client disconnected")
-				b.chanRemoveClient <- client.UUID
-				break leave
+			mt, message, err := c.ReadMessage()
+			if err != nil {
+				log.Warning("read: %v", err)
+				//break
+			}
+			log.Warning("rcv: %s", message)
+			err = c.WriteMessage(mt, message)
+			if err != nil {
+				log.Warning("write: %v", err)
+				//break
 			}
 		}
 		return nil

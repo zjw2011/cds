@@ -462,6 +462,13 @@ func NeedHatchery() HandlerConfigParam {
 	return f
 }
 
+func WebSocket() HandlerConfigParam {
+	f := func(rc *service.HandlerConfig) {
+		rc.Options["websocket"] = "true"
+	}
+	return f
+}
+
 // NeedService set the route for hatchery only
 func NeedService() HandlerConfigParam {
 	f := func(rc *service.HandlerConfig) {
