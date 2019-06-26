@@ -8,6 +8,7 @@ import { TranslateService } from '@ngx-translate/core';
 import { Observable } from 'rxjs';
 import { bufferTime, filter, map, mergeMap } from 'rxjs/operators';
 import { Subscription } from 'rxjs/Subscription';
+import { WebSocketSubject } from 'rxjs/webSocket';
 import * as format from 'string-format-obj';
 import { environment } from '../environments/environment';
 import { AppService } from './app.service';
@@ -21,7 +22,6 @@ import { ToastService } from './shared/toast/ToastService';
 import { CDSSharedWorker } from './shared/worker/shared.worker';
 import { CDSWebWorker } from './shared/worker/web.worker';
 import { CDSWorker } from './shared/worker/worker';
-import { WebSocketSubject } from 'rxjs/webSocket';
 
 @Component({
     selector: 'app-root',
@@ -98,7 +98,7 @@ export class AppComponent implements OnInit {
             } else {
                 this.isConnected = true;
                 this.startSSE();
-                this.startWebSocket2();
+                this.startWebSocket();
             }
             this.startVersionWorker();
         });
@@ -150,26 +150,15 @@ export class AppComponent implements OnInit {
         }
     }
 
-    startWebSocket2(): void {
-        let exampleSocket = new WebSocket("ws://127.0.0.1:8081/ws", this._authStore.getUser().token);
-        exampleSocket.onopen = function (event) {
-           console.log('Connected', event);
-        };
-
-
-    }
-
     startWebSocket(): void {
+        let url = (environment.apiURL + '/ws').replace('https', 'wss');
+        url = url.replace('http', 'ws');
         let conf = {
-            url: 'ws://127.0.0.1:8081/ws',
-            protocol: this._authStore.getUser().token,
-            headers: {
-                "ee": "df"
-            },
+            url: url
         };
 
         this.websocket = new WebSocketSubject(conf);
-        this.websocket.subscribe((message)=> {
+        this.websocket.retry().subscribe((message) => {
             console.log(message);
         }, (err) => {
             console.error(err)
