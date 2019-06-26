@@ -301,6 +301,8 @@ github.com/gorilla/context
 github.com/gorilla/handlers
 # github.com/gorilla/mux v0.0.0-20160920230813-757bef944d0f
 github.com/gorilla/mux
+# github.com/gorilla/websocket v1.4.0
+github.com/gorilla/websocket
 # github.com/gregjones/httpcache v0.0.0-20190212212710-3befbb6ad0cc
 github.com/gregjones/httpcache
 github.com/gregjones/httpcache/diskcache
