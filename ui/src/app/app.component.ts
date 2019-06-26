@@ -151,12 +151,13 @@ export class AppComponent implements OnInit {
     }
 
     startWebSocket(): void {
-        let url = (environment.apiURL + '/ws').replace('https', 'wss');
+        let url = (environment.apiURL + '/ws').replace('https', 'ws');
         url = url.replace('http', 'ws');
         let conf = {
             url: url
         };
 
+        console.log(url);
         this.websocket = new WebSocketSubject(conf);
         this.websocket.retry().subscribe((message) => {
             console.log(message);
