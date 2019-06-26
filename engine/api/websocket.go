@@ -170,79 +170,43 @@ func (b *websocketBroker) Start(ctx context.Context, panicCallback func(s string
 
 func (b *websocketBroker) ServeHTTP() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) (err error) {
-		w.Header().Set("Connection", "keep-alive")
-
+		log.Warning("Welcome")
 		c, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Error("websocket: unable to create connection: %v", err)
 			return
 		}
+		c.WriteMessage(websocket.TextMessage, []byte("{ \"foo\": \"bar\" }"))
+		log.Warning("Created %+v", w.Header())
+		//w.Header().Add("Sec-WebSocket-Protocol", r.Header.Get("Sec-WebSocket-Protocol"))
 
 		defer c.Close()
 
-		/*
-				log.Warning("Connected")
-				//c.WriteMessage(websocket.TextMessage, []byte("Connected"))
-				log.Warning("Msg Send")
-
-				// Create User
-				user := deprecatedGetUser(ctx)
-				if err := loadUserPermissions(b.dbFunc(), b.cache, user); err != nil {
-					return sdk.WrapError(err, "websocketBroker.Serve Cannot load user permission")
-				}
-
-				log.Warning("Load user")
-
-				uuid := sdk.UUID()
-				client := &websocketBrokerSubscribe{
-					UUID:    uuid,
-					User:    user,
-					isAlive: abool.NewBool(true),
-					conn:    c,
-				}
-
-				log.Warning("Create client")
-
-				// Add this client to the map of those that should receive updates
-				b.chanAddClient <- client
-
-				log.Warning("Client added")
-				tick := time.NewTicker(time.Second)
-				defer tick.Stop()
-
-				log.Warning("Start loop")
-
-			leave:
-				for {
-					select {
-					case <-ctx.Done():
-						log.Warning("websocket.Http: context done")
-						b.chanRemoveClient <- client.UUID
-						break leave
-					case <-r.Context().Done():
-						log.Warning("websocket.Http: client disconnected")
-						b.chanRemoveClient <- client.UUID
-						break leave
-					}
-				}
-				log.Warning("Bonjour Je ferme tout")
-				return nil
-
-		*/
-		for {
-			mt, message, err := c.ReadMessage()
-			if err != nil {
-				log.Warning("read: %v", err)
-				//break
-			}
-			log.Warning("rcv: %s", message)
-			err = c.WriteMessage(mt, message)
-			if err != nil {
-				log.Warning("write: %v", err)
-				//break
-			}
-		}
+		time.Sleep(10 * time.Hour)
+		log.Warning("Closing")
 		return nil
+	}
+}
+
+func (b *websocketBroker) ServeHTTP2(w http.ResponseWriter, r *http.Request) {
+	c, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Warning("upgrade:", err)
+		return
+	}
+	defer c.Close()
+	for {
+		mt, message, err := c.ReadMessage()
+		if err != nil {
+			log.Warning("read:", err)
+			break
+		}
+		log.Warning("recv: %s", message)
+		err = c.WriteMessage(mt, message)
+		if err != nil {
+			log.Warning("write:", err)
+			break
+		}
 	}
 }
 

@@ -389,7 +389,9 @@ func (api *API) InitRouter() {
 
 	// SSE
 	r.Handle("/events", r.GET(api.eventsBroker.ServeHTTP))
-	r.Handle("/ws", r.GET(api.websocketBroker.ServeHTTP, WebSocket()))
+
+	// Websocket
+	r.Handle("/ws", r.GET(api.websocketBroker.ServeHTTP, Auth(false)))
 
 	// Feature
 	r.Handle("/feature/clean", r.POST(api.cleanFeatureHandler, NeedToken("X-Izanami-Token", api.Config.Features.Izanami.Token), Auth(false)))
