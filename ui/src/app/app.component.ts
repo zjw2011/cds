@@ -151,8 +151,12 @@ export class AppComponent implements OnInit {
     }
 
     startWebSocket(): void {
-        let url = (environment.apiURL + '/ws').replace('https', 'ws');
-        url = url.replace('http', 'ws');
+        let url = '';
+        if (environment.production) {
+            url = 'ws://' + window.location.host + this._router['location']._baseHref + '/cdsapi/ws';
+        } else {
+            url = environment.apiURL.replace('http', 'ws') + '/ws';
+        }
         let conf = {
             url: url
         };
@@ -208,8 +212,6 @@ export class AppComponent implements OnInit {
         this.sseWorker.start({
             headAuthKey: authKey,
             headAuthValue: authValue,
-            urlSubscribe: environment.apiURL + '/events/subscribe',
-            urlUnsubscribe: environment.apiURL + 'events/unsubscribe',
             sseURL: environment.apiURL + '/events',
             pingURL: environment.apiURL + '/user/logged'
         });

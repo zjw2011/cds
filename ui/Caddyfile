@@ -9,6 +9,11 @@
         404 index.html
     }
 
+    proxy /cdsapi/ws {$BACKEND_HOST} {
+      without /cdsapi
+      websocket
+    }
+
     proxy /cdsapi {$BACKEND_HOST} {
         without /cdsapi
         header_upstream Authorization {>Authorization}
