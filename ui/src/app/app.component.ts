@@ -153,7 +153,7 @@ export class AppComponent implements OnInit {
     startWebSocket(): void {
         let url = '';
         if (environment.production) {
-            url = 'ws://' + window.location.host + this._router['location']._baseHref + '/cdsapi/ws';
+            url = 'wss://' + window.location.host + this._router['location']._baseHref + '/cdsapi/ws';
         } else {
             url = environment.apiURL.replace('http', 'ws') + '/ws';
         }
