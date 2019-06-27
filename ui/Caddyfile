@@ -11,6 +11,7 @@
 
     proxy /cdsapi/ws {$BACKEND_HOST} {
       without /cdsapi
+      header_upstream Connection upgrade
       websocket
     }
 
