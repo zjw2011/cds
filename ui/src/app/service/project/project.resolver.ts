@@ -17,6 +17,7 @@ export class ProjectResolver implements Resolve<Project> {
             new LoadOpts('withApplicationNames', 'application_names'),
             new LoadOpts('withPipelineNames', 'pipeline_names'),
             new LoadOpts('withWorkflowNames', 'workflow_names'),
+            new LoadOpts('withEnvironmentNames', 'environment_names'),
             new LoadOpts('withLabels', 'labels')
         ];
 
@@ -69,8 +70,7 @@ export class ProjectForApplicationResolver implements Resolve<Project> {
             new LoadOpts('withWorkflowNames', 'workflow_names'),
             new LoadOpts('withPipelineNames', 'pipeline_names'),
             new LoadOpts('withApplicationNames', 'application_names'),
-            new LoadOpts('withLabels', 'labels'),
-            new LoadOpts('withEnvironments', 'environments'),
+            new LoadOpts('withEnvironmentNames', 'environment_names'),
         ];
 
         return this.store.dispatch(new FetchProject({

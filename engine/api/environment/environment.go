@@ -82,7 +82,7 @@ func Lock(db gorp.SqlExecutor, projectKey, envName string) error {
 	) FOR UPDATE SKIP LOCKED
 	`, projectKey, envName)
 	if err == sql.ErrNoRows {
-		return sdk.ErrNoEnvironment
+		return sdk.ErrEnvironmentNotFound
 	}
 	return err
 }
@@ -98,7 +98,7 @@ func LoadEnvironmentByID(db gorp.SqlExecutor, ID int64) (*sdk.Environment, error
 		 	WHERE id = $1`
 	if err := db.QueryRow(query, ID).Scan(&env.ID, &env.Name, &env.ProjectID, &env.FromRepository); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, sdk.ErrNoEnvironment
+			return nil, sdk.ErrEnvironmentNotFound
 		}
 		return nil, err
 	}
@@ -112,16 +112,19 @@ func LoadEnvironmentByName(db gorp.SqlExecutor, projectKey, envName string) (*sd
 	}
 
 	var env sdk.Environment
-	query := `SELECT environment.id, environment.name,  environment.project_id, environment.from_repository
+	query := `SELECT environment.id, environment.name,  environment.project_id, environment.from_repository, environment.last_modified
 		  FROM environment
 		  JOIN project ON project.id = environment.project_id
 		  WHERE project.projectKey = $1 AND environment.name = $2`
-	if err := db.QueryRow(query, projectKey, envName).Scan(&env.ID, &env.Name, &env.ProjectID, &env.FromRepository); err != nil {
+	var lastModified time.Time
+	if err := db.QueryRow(query, projectKey, envName).Scan(&env.ID, &env.Name, &env.ProjectID, &env.FromRepository, &lastModified); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, sdk.ErrNoEnvironment
+			return nil, sdk.ErrorWithData(sdk.ErrEnvironmentNotFound, envName)
 		}
 		return nil, err
 	}
+	env.LastModified = lastModified.Unix()
+	env.ProjectKey = projectKey
 	return &env, loadDependencies(db, &env)
 }
 
@@ -310,4 +313,22 @@ func AddKeyPairToEnvironment(db gorp.SqlExecutor, envID int64, keyname string, u
 	}
 
 	return InsertVariable(db, envID, p, u)
+}
+
+// LoadAllNames returns all environment names
+func LoadAllNames(db gorp.SqlExecutor, projID int64) (sdk.IDNames, error) {
+	query := `SELECT environment.id, environment.name
+			  FROM environment
+			  WHERE project_id = $1
+			  ORDER BY environment.name`
+
+	var res sdk.IDNames
+	if _, err := db.Select(&res, query, projID); err != nil {
+		if err == sql.ErrNoRows {
+			return res, nil
+		}
+		return nil, sdk.WithStack(err)
+	}
+
+	return res, nil
 }

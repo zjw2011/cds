@@ -1,10 +1,10 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Action, State, StateContext } from '@ngxs/store';
+import { Action, createSelector, State, StateContext } from '@ngxs/store';
 import { Environment } from 'app/model/environment.model';
 import { GroupPermission } from 'app/model/group.model';
 import { ProjectIntegration } from 'app/model/integration.model';
 import { Key } from 'app/model/keys.model';
-import { IdName, LoadOpts, Project } from 'app/model/project.model';
+import { IdName, Label, LoadOpts, Project } from 'app/model/project.model';
 import { Usage } from 'app/model/usage.model';
 import { Variable } from 'app/model/variable.model';
 import { NavbarService } from 'app/service/navbar/navbar.service';
@@ -30,6 +30,18 @@ export class ProjectStateModel {
     }
 })
 export class ProjectState {
+
+    static selectEnvironment(name: string) {
+        return createSelector(
+            [ProjectState],
+            (state: ProjectStateModel): Environment => {
+                if (!state.project || !state.project.environments) {
+                    return null;
+                }
+                return state.project.environments.find((env) => env.name === name);
+            }
+        );
+    }
 
     constructor(private _http: HttpClient, private _navbarService: NavbarService) { }
 
@@ -87,6 +99,7 @@ export class ProjectState {
                 new LoadOpts('withPermission', 'permission')
             ];
         }
+        opts.push(new LoadOpts('withLabels', 'labels'));
         opts.push(new LoadOpts('withFeatures', 'features'));
         opts.push(new LoadOpts('withIntegrations', 'integrations'));
         opts.forEach((opt) => params = params.append(opt.queryParam, 'true'));
@@ -123,6 +136,11 @@ export class ProjectState {
                             case 'environments':
                                 if (!res.environments) {
                                     projectUpdated.environments = [];
+                                }
+                                break;
+                            case 'environment_names':
+                                if (!res.environment_names) {
+                                    projectUpdated.environment_names = [];
                                 }
                                 break;
                             case 'integrations':
@@ -340,50 +358,70 @@ export class ProjectState {
 
     @Action(ProjectAction.AddLabelWorkflowInProject)
     addLabelWorkflow(ctx: StateContext<ProjectStateModel>, action: ProjectAction.AddLabelWorkflowInProject) {
+        // check if we will a to resync project to get new labels
+        let resyncProject = !action.payload.label.id;
         const state = ctx.getState();
-        let workflow_names = state.project.workflow_names ? state.project.workflow_names.concat([]) : [];
-        workflow_names = workflow_names.map((wf) => {
-            if (action.payload.workflowName === wf.name) {
-                let workflow: IdName;
-                if (wf.labels) {
-                    workflow = Object.assign({}, wf, { labels: wf.labels.concat(action.payload.label) });
-                } else {
-                    workflow = Object.assign({}, wf, {
-                        labels: [action.payload.label]
-                    });
+        return this._http.post<Label>(
+            `/project/${state.project.key}/workflows/${action.payload.workflowName}/label`,
+            action.payload.label
+        ).pipe(tap((label: Label) => {
+            let workflow_names = state.project.workflow_names ? state.project.workflow_names.concat([]) : [];
+            workflow_names = workflow_names.map((wf) => {
+                if (action.payload.workflowName === wf.name) {
+                    let workflow: IdName;
+                    if (wf.labels) {
+                        workflow = Object.assign({}, wf, { labels: wf.labels.concat(label) });
+                    } else {
+                        workflow = Object.assign({}, wf, {
+                            labels: [label]
+                        });
+                    }
+                    return workflow;
                 }
-                return workflow;
-            }
-            return wf;
-        });
+                return wf;
+            });
 
-        ctx.setState({
-            ...state,
-            project: Object.assign({}, state.project, <Project>{ workflow_names }),
-        });
+            ctx.setState({
+                ...state,
+                project: Object.assign({}, state.project, <Project>{ workflow_names }),
+            });
+
+            if (resyncProject) {
+                ctx.dispatch(new  ProjectAction.ResyncProject({
+                    projectKey: state.project.key,
+                    opts: []
+                }));
+            }
+        }));
     }
 
     @Action(ProjectAction.DeleteLabelWorkflowInProject)
     deleteLabelWorkflow(ctx: StateContext<ProjectStateModel>, action: ProjectAction.DeleteLabelWorkflowInProject) {
         const state = ctx.getState();
-        let workflow_names = state.project.workflow_names ? state.project.workflow_names.concat([]) : [];
-        workflow_names = workflow_names.map((wf) => {
-            if (action.payload.workflowName === wf.name) {
-                let workflow: IdName;
-                if (wf.labels) {
-                    workflow = Object.assign({}, wf, { labels: wf.labels.filter((label) => label.id !== action.payload.labelId) });
-                } else {
-                    workflow = Object.assign({}, wf, { labels: [] });
-                }
-                return workflow;
-            }
-            return wf;
-        });
 
-        ctx.setState({
-            ...state,
-            project: Object.assign({}, state.project, <Project>{ workflow_names }),
-        });
+        return this._http.delete<null>(
+            `/project/${state.project.key}/workflows/${action.payload.workflowName}/label/${action.payload.labelId}`
+        ).pipe(tap(() => {
+
+            let workflow_names = state.project.workflow_names ? state.project.workflow_names.concat([]) : [];
+            workflow_names = workflow_names.map((wf) => {
+                if (action.payload.workflowName === wf.name) {
+                    let workflow: IdName;
+                    if (wf.labels) {
+                        workflow = Object.assign({}, wf, { labels: wf.labels.filter((label) => label.id !== action.payload.labelId) });
+                    } else {
+                        workflow = Object.assign({}, wf, { labels: [] });
+                    }
+                    return workflow;
+                }
+                return wf;
+            });
+
+            ctx.setState({
+                ...state,
+                project: Object.assign({}, state.project, <Project>{ workflow_names }),
+            });
+        }));
     }
 
 
@@ -815,6 +853,89 @@ export class ProjectState {
     }
 
     //  ------- Environment --------- //
+    @Action(ProjectAction.FetchEnvironmentInProject)
+    fetchEnvironment(ctx: StateContext<ProjectStateModel>, action: ProjectAction.FetchEnvironmentInProject) {
+        const state = ctx.getState();
+
+        if (state.currentProjectKey && state.currentProjectKey !== action.payload.projectKey) {
+            ctx.dispatch(new ProjectAction.FetchProject({ projectKey: action.payload.projectKey, opts: [] }));
+        }
+        let params = new HttpParams();
+        params = params.append('withUsage', 'true');
+
+        return this._http
+            .get<Environment>(`/project/${action.payload.projectKey}/environment/${action.payload.envName}`, { params })
+            .pipe(tap((environment: Environment) => {
+                let envs = state.project.environments;
+                if (Array.isArray(envs)) {
+                    envs = envs.map((env) => {
+                        if (env.name === action.payload.envName) {
+                            return environment;
+                        }
+                        return env;
+                    })
+                } else {
+                    envs = [environment];
+                }
+                ctx.setState(<ProjectStateModel>{
+                    ...state,
+                    project: {
+                        ...state.project,
+                        environments: envs,
+                    }
+                });
+            }));
+    }
+
+    @Action(ProjectAction.AddEnvironmentKey)
+    addEnvironmentKey(ctx: StateContext<ProjectStateModel>, action: ProjectAction.AddEnvironmentKey) {
+        const state = ctx.getState();
+        return this._http.post<Key>(`/project/${action.payload.projectKey}/environment/${action.payload.envName}/keys`, action.payload.key)
+            .pipe(tap((key: Key) => {
+                let envs = state.project.environments;
+                if (Array.isArray(envs)) {
+                    envs = envs.map((env) => {
+                        if (env.name === action.payload.envName) {
+                            return { ...env, keys: [key].concat(env.keys) };
+                        }
+                        return env;
+                    })
+                }
+                ctx.setState(<ProjectStateModel>{
+                    ...state,
+                    project: {
+                        ...state.project,
+                        environments: envs,
+                    }
+                });
+            }));
+    }
+
+    @Action(ProjectAction.DeleteEnvironmentKey)
+    deleteEnvironmentKey(ctx: StateContext<ProjectStateModel>, action: ProjectAction.DeleteEnvironmentKey) {
+        const state = ctx.getState();
+        return this._http.delete<null>('/project/' + action.payload.projectKey +
+            '/environment/' + action.payload.envName + '/keys/' + action.payload.key.name)
+            .pipe(tap(() => {
+                let envs = state.project.environments;
+                if (Array.isArray(envs)) {
+                    envs = envs.map((env) => {
+                        if (env.name === action.payload.envName) {
+                            return { ...env, keys: env.keys.filter((key) => key.name === action.payload.key.name) };
+                        }
+                        return env;
+                    })
+                }
+                ctx.setState(<ProjectStateModel>{
+                    ...state,
+                    project: {
+                        ...state.project,
+                        environments: envs,
+                    }
+                });
+            }));
+    }
+
     @Action(ProjectAction.FetchEnvironmentsInProject)
     fetchEnvironments(ctx: StateContext<ProjectStateModel>, action: ProjectAction.FetchEnvironmentsInProject) {
         const state = ctx.getState();
@@ -989,7 +1110,7 @@ export class ProjectState {
 
     @Action(ProjectAction.CallbackRepositoryManagerBasicAuthInProject)
     callbackRepositoryManagerBasicAuth(ctx: StateContext<ProjectStateModel>,
-                                       action: ProjectAction.CallbackRepositoryManagerBasicAuthInProject) {
+        action: ProjectAction.CallbackRepositoryManagerBasicAuthInProject) {
         const state = ctx.getState();
         let data = {
             'username': action.payload.basicUser,

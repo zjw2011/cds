@@ -3,9 +3,8 @@ package feature
 import (
 	"strings"
 
-	client "github.com/ovhlabs/izanami-go-client"
-
 	"github.com/ovh/cds/engine/api/cache"
+	"github.com/ovh/cds/sdk/izanami"
 	"github.com/ovh/cds/sdk/log"
 )
 
@@ -13,13 +12,10 @@ const (
 	// FeatEnableTracing is the opencensus tracing feature id
 	FeatEnableTracing = "cds:tracing"
 
-	// FeatWNode wnode workflow representation
-	FeatWNode = "cds:wnode"
-
 	cacheFeatureKey = "feature:"
 )
 
-var izanami *client.Client
+var izanamiClient *izanami.Client
 
 // CheckContext represents the context send to Izanami to check if the feature is enabled
 type CheckContext struct {
@@ -34,19 +30,19 @@ type ProjectFeatures struct {
 
 // List all features
 func List() []string {
-	return []string{FeatWNode, FeatEnableTracing}
+	return []string{FeatEnableTracing}
 }
 
 // Init initialize Izanami client
 func Init(apiURL, clientID, clientSecret string) error {
-	izc, err := client.New(apiURL, clientID, clientSecret)
+	izc, err := izanami.New(apiURL, clientID, clientSecret)
 	SetClient(izc)
 	return err
 }
 
 // SetClient set a client driver for Izanami
-func SetClient(c *client.Client) {
-	izanami = c
+func SetClient(c *izanami.Client) {
+	izanamiClient = c
 }
 
 // GetFeatures tree for the given project from cache, if not found in cache init from Izanami.
@@ -94,12 +90,12 @@ func IsEnabled(store cache.Store, featureID string, projectKey string) bool {
 
 func getStatusFromIzanami(featureID string, projectKey string) bool {
 	// no feature flipping always return active.
-	if izanami == nil || izanami.Feature() == nil {
+	if izanamiClient == nil || izanamiClient.Feature() == nil {
 		return true
 	}
 
 	// get from Izanami
-	resp, errCheck := izanami.Feature().CheckWithContext(featureID, CheckContext{projectKey})
+	resp, errCheck := izanamiClient.Feature().CheckWithContext(featureID, CheckContext{projectKey})
 	if errCheck != nil {
 		if !strings.Contains(errCheck.Error(), "404") {
 			log.Warning("Feature.IsEnabled > Cannot check feature %s: %s", featureID, errCheck)
