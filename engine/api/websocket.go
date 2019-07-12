@@ -75,7 +75,6 @@ func (b *websocketBroker) Start(ctx context.Context, panicCallback func(s string
 			}
 
 		case receivedEvent := <-b.messages:
-			log.Warning("Received event: %+v", receivedEvent)
 			for i := range b.clients {
 				c := b.clients[i]
 				if c == nil {
@@ -159,8 +158,6 @@ func (b *websocketBroker) ServeHTTP() service.Handler {
 		}
 		defer c.Close()
 
-		log.Warning("WElcome")
-		c.WriteMessage(websocket.TextMessage, []byte("Coucou"))
 		client := websocketClient{
 			AuthConsumer: getAPIConsumer(r.Context()),
 			isAlive:      abool.NewBool(true),

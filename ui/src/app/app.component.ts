@@ -7,8 +7,9 @@ import { ActivatedRoute, NavigationEnd, ResolveEnd, ResolveStart, Router } from 
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
 import { Observable } from 'rxjs';
-import { filter, map, mergeMap } from 'rxjs/operators';
+import { delay, filter, map, mergeMap, retryWhen } from 'rxjs/operators';
 import { Subscription } from 'rxjs/Subscription';
+import { webSocket, WebSocketSubject } from 'rxjs/webSocket';
 import * as format from 'string-format-obj';
 import { AppService } from './app.service';
 import { LanguageStore } from './service/language/language.store';
@@ -19,7 +20,6 @@ import { ToastService } from './shared/toast/ToastService';
 import { CDSWebWorker } from './shared/worker/web.worker';
 import { CDSWorker } from './shared/worker/worker';
 import { AuthenticationState } from './store/authentication.state';
-import { WebSocketSubject } from 'rxjs/webSocket';
 
 @Component({
     selector: 'app-root',
@@ -147,20 +147,15 @@ export class AppComponent implements OnInit {
         const protocol = window.location.protocol.replace('http', 'ws')
         const host = window.location.host;
         const href = this._router['location']._baseHref;
-        let conf = {
-            url: `${protocol}//${host}/${href}/cdsapi/ws`
-        };
 
-        console.log(conf.url);
-        this.websocket = new WebSocketSubject(conf);
-        this.websocket.retry().subscribe((message) => {
-            console.log(message);
+        this.websocket = webSocket(`${protocol}//${host}${href}/cdsapi/ws`);
+        this.websocket.pipe(retryWhen(errors => errors.pipe(delay(5000)))).subscribe((message) => {
+            console.log('Message received: ', message);
         }, (err) => {
-            console.error(err)
+            console.error('Error: ', err)
         }, () => {
-            console.warn('Completed');
+            console.warn('Websocket Completed');
         });
-
     }
 
     startVersionWorker(): void {
