@@ -31,14 +31,15 @@ func (api *API) InitRouter() {
 
 	log.Info("Initializing Events broker")
 	// Initialize event broker
-	api.eventsBroker = &eventsBroker{
-		router:   api.Router,
-		cache:    api.Cache,
-		clients:  make(map[string]*eventsBrokerSubscribe),
-		dbFunc:   api.DBConnectionFactory.GetDBMap,
-		messages: make(chan sdk.Event),
+	api.websocketBroker = &websocketBroker{
+		router:           api.Router,
+		cache:            api.Cache,
+		clients:          make(map[string]*websocketClient),
+		messages:         make(chan sdk.Event),
+		chanAddClient:    make(chan *websocketClient),
+		chanRemoveClient: make(chan string),
 	}
-	api.eventsBroker.Init(context.Background(), api.PanicDump())
+	api.websocketBroker.Init(context.Background(), api.PanicDump())
 
 	// Auth
 	r.Handle("/auth/driver", ScopeNone(), r.GET(api.getAuthDriversHandler, Auth(false)))
@@ -381,7 +382,7 @@ func (api *API) InitRouter() {
 	r.Handle("/workflow/hook/model/{model}", ScopeNone(), r.GET(api.getWorkflowHookModelHandler), r.POST(api.postWorkflowHookModelHandler, NeedAdmin(true)), r.PUT(api.putWorkflowHookModelHandler, NeedAdmin(true)))
 
 	// SSE
-	r.Handle("/events", ScopeNone(), r.GET(api.eventsBroker.ServeHTTP))
+	r.Handle("/ws", ScopeNone(), r.GET(api.websocketBroker.ServeHTTP))
 
 	// Feature
 	r.Handle("/feature/clean", ScopeNone(), r.POST(api.cleanFeatureHandler, NeedToken("X-Izanami-Token", api.Config.Features.Izanami.Token)))

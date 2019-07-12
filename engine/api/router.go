@@ -46,10 +46,10 @@ type Router struct {
 	nbPanic                int
 	lastPanic              *time.Time
 	Stats                  struct {
-		Errors     *stats.Int64Measure
-		Hits       *stats.Int64Measure
-		SSEClients *stats.Int64Measure
-		SSEEvents  *stats.Int64Measure
+		Errors           *stats.Int64Measure
+		Hits             *stats.Int64Measure
+		WebSocketEvents  *stats.Int64Measure
+		WebSocketClients *stats.Int64Measure
 	}
 }
 
@@ -99,16 +99,6 @@ func (r *Router) recoverWrap(h http.HandlerFunc) http.HandlerFunc {
 					err = re.(sdk.Error)
 				default:
 					err = sdk.ErrUnknownError
-				}
-
-				// the SSE handler can panic, and it's the way gorilla/mux works :(
-				if strings.HasPrefix(req.URL.String(), "/events") {
-					msg := fmt.Sprintf("%v", err)
-					for _, s := range handledEventErrors {
-						if strings.Contains(msg, s) {
-							return
-						}
-					}
 				}
 
 				log.Error("[PANIC_RECOVERY] Panic occurred on %s:%s, recover %s", req.Method, req.URL.String(), err)
@@ -482,9 +472,9 @@ func (r *Router) InitMetrics(service, name string) error {
 	label = fmt.Sprintf("cds/%s/%s/router_hits", service, name)
 	r.Stats.Hits = stats.Int64(label, "number of hits", stats.UnitDimensionless)
 	label = fmt.Sprintf("cds/%s/%s/sse_clients", service, name)
-	r.Stats.SSEClients = stats.Int64(label, "number of sse clients", stats.UnitDimensionless)
+	r.Stats.WebSocketClients = stats.Int64(label, "number of sse clients", stats.UnitDimensionless)
 	label = fmt.Sprintf("cds/%s/%s/sse_events", service, name)
-	r.Stats.SSEEvents = stats.Int64(label, "number of sse events", stats.UnitDimensionless)
+	r.Stats.WebSocketEvents = stats.Int64(label, "number of sse events", stats.UnitDimensionless)
 
 	tagCDSInstance, _ := tag.NewKey("cds")
 	tags := []tag.Key{tagCDSInstance}
@@ -494,7 +484,7 @@ func (r *Router) InitMetrics(service, name string) error {
 	return observability.RegisterView(
 		observability.NewViewCount("router_errors", r.Stats.Errors, tags),
 		observability.NewViewCount("router_hits", r.Stats.Hits, tags),
-		observability.NewViewLast("sse_clients", r.Stats.SSEClients, tags),
-		observability.NewViewCount("sse_events", r.Stats.SSEEvents, tags),
+		observability.NewViewLast("sse_clients", r.Stats.WebSocketClients, tags),
+		observability.NewViewCount("sse_events", r.Stats.WebSocketEvents, tags),
 	)
 }

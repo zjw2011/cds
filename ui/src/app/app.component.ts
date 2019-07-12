@@ -7,20 +7,19 @@ import { ActivatedRoute, NavigationEnd, ResolveEnd, ResolveStart, Router } from 
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
 import { Observable } from 'rxjs';
-import { bufferTime, filter, map, mergeMap } from 'rxjs/operators';
+import { filter, map, mergeMap } from 'rxjs/operators';
 import { Subscription } from 'rxjs/Subscription';
 import * as format from 'string-format-obj';
 import { AppService } from './app.service';
-import { Event, EventType } from './model/event.model';
 import { LanguageStore } from './service/language/language.store';
 import { NotificationService } from './service/notification/notification.service';
 import { ThemeStore } from './service/theme/theme.store';
 import { AutoUnsubscribe } from './shared/decorator/autoUnsubscribe';
 import { ToastService } from './shared/toast/ToastService';
-import { CDSSharedWorker } from './shared/worker/shared.worker';
 import { CDSWebWorker } from './shared/worker/web.worker';
 import { CDSWorker } from './shared/worker/worker';
 import { AuthenticationState } from './store/authentication.state';
+import { WebSocketSubject } from 'rxjs/webSocket';
 
 @Component({
     selector: 'app-root',
@@ -33,7 +32,6 @@ export class AppComponent implements OnInit {
     isConnected = false;
     versionWorker: CDSWebWorker;
     sseWorker: CDSWorker;
-    heartbeatToken: number;
     zone: NgZone;
     currentVersion = 0;
     showUIUpdatedBanner = false;
@@ -42,11 +40,10 @@ export class AppComponent implements OnInit {
     versionWorkerSubscription: Subscription;
     _routerSubscription: Subscription;
     _routerNavEndSubscription: Subscription;
-    _sseSubscription: Subscription;
     displayResolver = false;
     toasterConfig: any;
-    lastPing: number;
-    currentTheme: string;
+
+    websocket: WebSocketSubject<any>;
 
     constructor(
         _translate: TranslateService,
@@ -94,7 +91,7 @@ export class AppComponent implements OnInit {
                 this.stopWorker(this.sseWorker, null);
             } else {
                 this.isConnected = true;
-                this.startSSE();
+                this.startWebSocket();
             }
             this.startVersionWorker();
         });
@@ -146,88 +143,25 @@ export class AppComponent implements OnInit {
         }
     }
 
-    startSSE(): void {
-        if (this.sseWorker) {
-            this.stopWorker(this.sseWorker, null);
-        }
-        let authKey: string;
-        let authValue: string;
-        let user = this._store.selectSnapshot(AuthenticationState.user);
-        // ADD user AUTH
-        // TODO refact SSE auth
-        // let sessionToken = this._authStore.getSessionToken();
-        // if (sessionToken) {
-        if (false) {
-            // authKey = this._authStore.localStorageSessionKey;
-            // authValue = sessionToken;
-        } else if (user) {
-            authKey = 'Authorization';
-            authValue = 'Basic ' + user.token;
-        } else {
-            return;
-        }
+    startWebSocket(): void {
+        const protocol = window.location.protocol.replace('http', 'ws')
+        const host = window.location.host;
+        const href = this._router['location']._baseHref;
+        let conf = {
+            url: `${protocol}//${host}/${href}/cdsapi/ws`
+        };
 
-        if (window['SharedWorker']) {
-            this.sseWorker = new CDSSharedWorker('./assets/worker/sharedWorker.js');
-            if (this.heartbeatToken !== 0) {
-                clearInterval(this.heartbeatToken);
-            }
-
-            this.heartbeatToken = window.setInterval(() => {
-                let d = (new Date()).getTime();
-                if (this.lastPing !== 0 && (d - this.lastPing) > 11000) {
-                    // If no ping in the last 11s restart SSE
-                    this.startSSE();
-                }
-            }, 2000);
-        } else {
-            this.sseWorker = new CDSWebWorker('./assets/worker/webWorker.js');
-        }
-
-        this.sseWorker.start({
-            headAuthKey: authKey,
-            headAuthValue: authValue,
-            urlSubscribe: '/cdsapi/events/subscribe',
-            urlUnsubscribe: '/cdsapi/events/unsubscribe',
-            sseURL: '/cdsapi/events',
-            pingURL: '/cdsapi/user/logged'
+        console.log(conf.url);
+        this.websocket = new WebSocketSubject(conf);
+        this.websocket.retry().subscribe((message) => {
+            console.log(message);
+        }, (err) => {
+            console.error(err)
+        }, () => {
+            console.warn('Completed');
         });
-        this._sseSubscription = this.sseWorker.response()
-            .pipe(
-                filter((e) => e != null),
-                bufferTime(2000),
-                filter((events) => events.length !== 0),
 
-            )
-            .subscribe((events) => {
-                this.zone.run(() => {
-                    let resultEvents = (<Array<Event>>events).reduce((results, e) => {
-                        if (!e.type_event || e.type_event.indexOf(EventType.RUN_WORKFLOW_PREFIX) !== 0) {
-                            results.push(e);
-                        } else {
-                            let wr = results.find(re => re.project_key === e.project_key && re.workflow_name === e.workflow_name);
-                            if (!wr) {
-                                results.push(e);
-                            }
-                        }
-                        return results;
-                    }, new Array<Event>());
-                    for (let e of resultEvents) {
-                        if (e.healthCheck != null) {
-                            this.lastPing = (new Date()).getTime();
-                            // 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
-                            if (e.healthCheck > 1) {
-                                // Reopen SSE
-                                this.startSSE();
-                            }
-                        } else {
-                            this._appService.manageEvent(<Event>e);
-                        }
-                    }
-                });
-            });
     }
-
 
     startVersionWorker(): void {
         this.stopWorker(this.versionWorker, this.versionWorkerSubscription);
