@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/ovh/cds/engine/service"
+	"github.com/go-gorp/gorp"
 	"io"
 	"net/http"
 	"sync"
@@ -15,6 +15,8 @@ import (
 
 	"github.com/ovh/cds/engine/api/cache"
 	"github.com/ovh/cds/engine/api/observability"
+	"github.com/ovh/cds/engine/api/permission"
+	"github.com/ovh/cds/engine/service"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/log"
 )
@@ -26,19 +28,35 @@ type websocketClient struct {
 	isAlive      *abool.AtomicBool
 	con          *websocket.Conn
 	mutex        sync.Mutex
-	messageChan  chan WebsocketMessage
+	filter       WebsocketFilter
+	messageChan  chan WebsocketFilter
 }
 
 type websocketBroker struct {
 	clients          map[string]*websocketClient
 	cache            cache.Store
+	dbFunc           func() *gorp.DbMap
 	router           *Router
 	messages         chan sdk.Event
 	chanAddClient    chan *websocketClient
 	chanRemoveClient chan string
 }
 
-type WebsocketMessage struct {
+type WebsocketFilter struct {
+	ProjectKey        string `json:"project_key"`
+	ApplicationName   string `json:"application_name"`
+	PipelineName      string `json:"pipeline_name"`
+	EnvironmentName   string `json:"environment_name"`
+	WorkflowName      string `json:"workflow_name"`
+	WorkflowRunNumber int64  `json:"workflow_run_num"`
+	WorkflowNodeRunID int64  `json:"workflow_node_run_id"`
+	Favorites         bool   `json:"favorites"`
+}
+
+type WebsocketEvent struct {
+	Status string    `json:"status"`
+	Error  string    `json:"error"`
+	Event  sdk.Event `json:"event"`
 }
 
 //Init the websocketBroker
@@ -82,13 +100,13 @@ func (b *websocketBroker) Start(ctx context.Context, panicCallback func(s string
 					continue
 				}
 
-				// Send the event to the client sse within a goroutine
+				// Send the event to the client workflow within a goroutine
 				s := "websocket-" + b.clients[i].AuthConsumer.ID
 				sdk.GoRoutine(ctx, s,
 					func(ctx context.Context) {
 						if c.isAlive.IsSet() {
 							log.Debug("send data to %s", c.AuthConsumer.ID)
-							if err := c.Send(receivedEvent); err != nil {
+							if err := c.send(receivedEvent); err != nil {
 								b.chanRemoveClient <- c.AuthConsumer.ID
 								log.Error("websocketBroker.Start> unable to send event to %s: %v", c.AuthConsumer.ID, err)
 							}
@@ -162,47 +180,90 @@ func (b *websocketBroker) ServeHTTP() service.Handler {
 			AuthConsumer: getAPIConsumer(r.Context()),
 			isAlive:      abool.NewBool(true),
 			con:          c,
-			messageChan:  make(chan WebsocketMessage, 10),
+			messageChan:  make(chan WebsocketFilter, 10),
 		}
 		b.chanAddClient <- &client
 
-		go client.read(r.Context())
+		go client.read(ctx, b.dbFunc())
 
+		tick := time.NewTicker(100 * time.Millisecond)
+		defer tick.Stop()
 		for {
-			var msg WebsocketMessage
-			if err := c.ReadJSON(msg); err != nil {
+			var msg WebsocketFilter
+			_, message, err := c.ReadMessage()
+			if err != nil {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					log.Warning("websocket error: %v", err)
+				}
+				log.Warning("client disconnected")
+				break
+			}
+			if err := json.Unmarshal(message, &msg); err != nil {
 				log.Warning("websocket.readJSON: %v", err)
+				continue
 			}
 			// Send message to client
 			client.messageChan <- msg
 		}
+		return nil
 	}
 }
 
-func (c *websocketClient) read(ctx context.Context) {
+func (c *websocketClient) read(ctx context.Context, db *gorp.DbMap) {
 	for {
 		select {
 		case <-ctx.Done():
 			log.Debug("events.Http: context done")
 			return
 		case m := <-c.messageChan:
-			if err := c.UpdateEventFilter(m); err != nil {
+			if err := c.updateEventFilter(ctx, db, m); err != nil {
 				log.Error("websocketClient.read: unable to update event filter: %v", err)
+				msg := WebsocketEvent{
+					Status: "KO",
+					Error:  sdk.Cause(err).Error(),
+				}
+				_ = c.con.WriteJSON(msg)
 				continue
 			}
 		}
 	}
 }
 
-func (c *websocketClient) UpdateEventFilter(m WebsocketMessage) error {
+func (c *websocketClient) updateEventFilter(ctx context.Context, db gorp.SqlExecutor, m WebsocketFilter) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+
+	// Subscribe to project
+	if m.ProjectKey != "" && m.WorkflowName == "" {
+		perms, err := permission.LoadProjectMaxLevelPermission(ctx, db, []string{m.ProjectKey}, getAPIConsumer(ctx).GetGroupIDs())
+		if err != nil {
+			return err
+		}
+		maxLevelPermission := perms.Level(m.ProjectKey)
+		if maxLevelPermission < sdk.PermissionRead && !isMaintainer(ctx) {
+			return sdk.WithStack(sdk.ErrForbidden)
+		}
+		c.filter = m
+	}
+
+	// Subscribe to workflow
+	if m.ProjectKey != "" && m.WorkflowName != "" {
+		perms, err := permission.LoadWorkflowMaxLevelPermission(ctx, db, m.ProjectKey, []string{m.WorkflowName}, getAPIConsumer(ctx).GetGroupIDs())
+		if err != nil {
+			return err
+		}
+		maxLevelPermission := perms.Level(m.WorkflowName)
+		if maxLevelPermission < sdk.PermissionRead && !isMaintainer(ctx) {
+			return sdk.WithStack(sdk.ErrForbidden)
+		}
+		c.filter = m
+	}
 
 	return nil
 }
 
 // Send an event to a client
-func (c *websocketClient) Send(event sdk.Event) (err error) {
+func (c *websocketClient) send(event sdk.Event) (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	defer func() {
@@ -215,7 +276,36 @@ func (c *websocketClient) Send(event sdk.Event) (err error) {
 		return nil
 	}
 
-	if err := c.con.WriteJSON(event); err != nil {
+	if c.filter.Favorites {
+		// TODO Check if event is on favorite
+		return nil
+	} else {
+		if event.ProjectKey != c.filter.ProjectKey {
+			return nil
+		}
+		if c.filter.EnvironmentName != "" && event.EnvironmentName != c.filter.EnvironmentName {
+			return nil
+		}
+		if c.filter.PipelineName != "" && event.PipelineName != c.filter.PipelineName {
+			return nil
+		}
+		if c.filter.ApplicationName != "" && event.ApplicationName != c.filter.ApplicationName {
+			return nil
+		}
+		if c.filter.WorkflowName != "" && event.WorkflowName != c.filter.WorkflowName {
+			return nil
+		}
+		if c.filter.WorkflowRunNumber != 0 && event.WorkflowRunNum != c.filter.WorkflowRunNumber {
+			return nil
+		}
+		// TODO check node run event
+	}
+
+	msg := WebsocketEvent{
+		Status: "OK",
+		Event:  event,
+	}
+	if err := c.con.WriteJSON(msg); err != nil {
 		log.Error("websocketClient.Send > unable to write json: %v", err)
 	}
 	return nil

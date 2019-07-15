@@ -6,6 +6,7 @@ import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, NavigationEnd, ResolveEnd, ResolveStart, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
+import { WebSocketMessage } from 'app/model/websocket.model';
 import { Observable } from 'rxjs';
 import { delay, filter, map, mergeMap, retryWhen } from 'rxjs/operators';
 import { Subscription } from 'rxjs/Subscription';
@@ -42,6 +43,7 @@ export class AppComponent implements OnInit {
     _routerNavEndSubscription: Subscription;
     displayResolver = false;
     toasterConfig: any;
+    previousURL: string;
 
     websocket: WebSocketSubject<any>;
 
@@ -109,6 +111,14 @@ export class AppComponent implements OnInit {
 
         this._routerNavEndSubscription = this._router.events
             .pipe(filter((event) => event instanceof NavigationEnd))
+            .pipe(map((e: NavigationEnd) => {
+                if (!this.previousURL || this.previousURL.split('?')[0] !== e.url.split('?')[0]) {
+                    this.previousURL = e.url;
+                    this.manageWebsocketFilterByUrl(e.url);
+                    return;
+                }
+
+            }))
             .pipe(map(() => this._activatedRoute))
             .pipe(map((route) => {
                 let params = {};
@@ -134,6 +144,59 @@ export class AppComponent implements OnInit {
             });
     }
 
+    manageWebsocketFilterByUrl(url: string) {
+        let msg =  new WebSocketMessage();
+        let urlSplitted = url.substr(1, url.length - 1).split('/');
+        switch (urlSplitted[0]) {
+            case 'home':
+                msg.favorites = true;
+                break;
+            case 'project':
+                switch (urlSplitted.length) {
+                    case 1: // project creation
+                        break;
+                    case 2: // project view
+                        msg.project_key = urlSplitted[1].split('?')[0];
+                        break;
+                    default: // App/pipeline/env/workflow view
+                        msg.project_key = urlSplitted[1].split('?')[0];
+                        this.manageWebsocketFilterProjectPath(urlSplitted, msg);
+                }
+        }
+        this.websocket.next(msg);
+    }
+
+    manageWebsocketFilterProjectPath(urlSplitted: Array<string>, msg: WebSocketMessage) {
+        switch (urlSplitted[2]) {
+            case 'pipeline':
+                if (urlSplitted.length >= 4) {
+                    msg.pipeline_name = urlSplitted[3].split('?')[0];
+                }
+                break;
+            case 'application':
+                if (urlSplitted.length >= 4) {
+                    msg.application_name = urlSplitted[3].split('?')[0];
+                }
+                break;
+            case 'environment':
+                if (urlSplitted.length >= 4) {
+                    msg.environment_name = urlSplitted[3].split('?')[0];
+                }
+                break;
+            case 'workflow':
+                if (urlSplitted.length >= 4) {
+                    msg.workflow_name = urlSplitted[3].split('?')[0];
+                }
+                if (urlSplitted.length >= 6) {
+                    msg.workflow_run_num = Number(urlSplitted[5].split('?')[0]);
+                }
+                if (urlSplitted.length >= 8) {
+                    msg.workflow_node_run_id = Number(urlSplitted[7].split('?')[0]);
+                }
+                break;
+        }
+    }
+
     stopWorker(w: CDSWorker, s: Subscription): void {
         if (w) {
             w.stop();
@@ -144,13 +207,13 @@ export class AppComponent implements OnInit {
     }
 
     startWebSocket(): void {
-        const protocol = window.location.protocol.replace('http', 'ws')
+        const protocol = window.location.protocol.replace('http', 'ws');
         const host = window.location.host;
         const href = this._router['location']._baseHref;
 
         this.websocket = webSocket(`${protocol}//${host}${href}/cdsapi/ws`);
         this.websocket.pipe(retryWhen(errors => errors.pipe(delay(5000)))).subscribe((message) => {
-            console.log('Message received: ', message);
+            this._appService.manageEvent(message);
         }, (err) => {
             console.error('Error: ', err)
         }, () => {

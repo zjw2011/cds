@@ -34,6 +34,7 @@ func (api *API) InitRouter() {
 	api.websocketBroker = &websocketBroker{
 		router:           api.Router,
 		cache:            api.Cache,
+		dbFunc:           api.mustDB,
 		clients:          make(map[string]*websocketClient),
 		messages:         make(chan sdk.Event),
 		chanAddClient:    make(chan *websocketClient),

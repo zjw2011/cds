@@ -4,6 +4,7 @@ import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
 import cloneDeep from 'lodash-es/cloneDeep';
 import { filter, first } from 'rxjs/operators';
+import { WebSocketSubject } from 'rxjs/webSocket';
 import { Broadcast, BroadcastEvent } from './model/broadcast.model';
 import { Event, EventType } from './model/event.model';
 import { LoadOpts } from './model/project.model';
@@ -27,7 +28,7 @@ export class AppService {
 
     // Information about current route
     routeParams: {};
-
+    websocket: WebSocketSubject<any>;
     filter: TimelineFilter;
 
     constructor(

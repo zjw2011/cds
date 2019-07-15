@@ -98,7 +98,7 @@ export class NavbarComponent implements OnInit, AfterViewInit {
 
     ngAfterViewInit() {
         this._translate.get('navbar_projects_placeholder').subscribe(() => {
-            this.ready = true;
+            setTimeout(() => this.ready = true, 1)
         });
     }
 
