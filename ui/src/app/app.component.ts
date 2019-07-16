@@ -6,7 +6,7 @@ import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, NavigationEnd, ResolveEnd, ResolveStart, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
-import { WebSocketMessage } from 'app/model/websocket.model';
+import { WebSocketEvent, WebSocketMessage } from 'app/model/websocket.model';
 import { Observable } from 'rxjs';
 import { delay, filter, map, mergeMap, retryWhen } from 'rxjs/operators';
 import { Subscription } from 'rxjs/Subscription';
@@ -32,7 +32,6 @@ export class AppComponent implements OnInit {
     open: boolean;
     isConnected = false;
     versionWorker: CDSWebWorker;
-    sseWorker: CDSWorker;
     zone: NgZone;
     currentVersion = 0;
     showUIUpdatedBanner = false;
@@ -91,7 +90,6 @@ export class AppComponent implements OnInit {
         this._store.select(AuthenticationState.user).subscribe(user => {
             if (!user) {
                 this.isConnected = false;
-                this.stopWorker(this.sseWorker, null);
             } else {
                 this.isConnected = true;
                 this.startWebSocket();
@@ -226,8 +224,12 @@ export class AppComponent implements OnInit {
 
         this.websocket
             .pipe(retryWhen(errors => errors.pipe(delay(5000))))
-            .subscribe((message) => {
-            this._appService.manageEvent(message);
+            .subscribe((message: WebSocketEvent) => {
+                if (message.status === 'OK') {
+                    this._appService.manageEvent(message.event);
+                } else {
+                    this._toastService.error('', message.error);
+                }
         }, (err) => {
             console.error('Error: ', err)
         }, () => {

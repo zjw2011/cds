@@ -1,3 +1,5 @@
+import { Event } from 'app/model/event.model';
+
 export class WebSocketMessage {
     project_key: string;
     application_name: string;
@@ -7,4 +9,10 @@ export class WebSocketMessage {
     workflow_run_num: number;
     workflow_node_run_id: number;
     favorites: boolean;
+}
+
+export class WebSocketEvent {
+    status: string;
+    error: string;
+    event: Event;
 }

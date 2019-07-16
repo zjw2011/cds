@@ -53,6 +53,8 @@ export class AppService {
     }
 
     manageEvent(event: Event): void {
+        console.log(event.type_event, event.project_key, event.workflow_name,
+            event.application_name, event.pipeline_name, event.environment_name);
         if (!event || !event.type_event) {
             return
         }
