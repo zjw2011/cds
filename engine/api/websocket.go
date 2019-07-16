@@ -24,6 +24,7 @@ import (
 var upgrader = websocket.Upgrader{} // use default options
 
 type websocketClient struct {
+	UUID         string
 	AuthConsumer *sdk.AuthConsumer
 	isAlive      *abool.AtomicBool
 	con          *websocket.Conn
@@ -101,14 +102,14 @@ func (b *websocketBroker) Start(ctx context.Context, panicCallback func(s string
 				}
 
 				// Send the event to the client workflow within a goroutine
-				s := "websocket-" + b.clients[i].AuthConsumer.ID
+				s := "websocket-" + b.clients[i].UUID
 				sdk.GoRoutine(ctx, s,
 					func(ctx context.Context) {
 						if c.isAlive.IsSet() {
-							log.Debug("send data to %s", c.AuthConsumer.ID)
+							log.Debug("send data to %s", c.AuthConsumer.AuthentifiedUser.Username)
 							if err := c.send(receivedEvent); err != nil {
-								b.chanRemoveClient <- c.AuthConsumer.ID
-								log.Error("websocketBroker.Start> unable to send event to %s: %v", c.AuthConsumer.ID, err)
+								b.chanRemoveClient <- c.UUID
+								log.Error("websocketBroker.Start> unable to send event to %s: %v", c.AuthConsumer.AuthentifiedUser.Username, err)
 							}
 						}
 					}, panicCallback,
@@ -116,7 +117,7 @@ func (b *websocketBroker) Start(ctx context.Context, panicCallback func(s string
 			}
 
 		case client := <-b.chanAddClient:
-			b.clients[client.AuthConsumer.ID] = client
+			b.clients[client.UUID] = client
 
 		case uuid := <-b.chanRemoveClient:
 			client, has := b.clients[uuid]
@@ -177,6 +178,7 @@ func (b *websocketBroker) ServeHTTP() service.Handler {
 		defer c.Close()
 
 		client := websocketClient{
+			UUID:         sdk.UUID(),
 			AuthConsumer: getAPIConsumer(r.Context()),
 			isAlive:      abool.NewBool(true),
 			con:          c,

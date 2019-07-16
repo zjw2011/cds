@@ -46,6 +46,7 @@ export class AppComponent implements OnInit {
     previousURL: string;
 
     websocket: WebSocketSubject<any>;
+    currentFilter: WebSocketMessage;
 
     constructor(
         _translate: TranslateService,
@@ -112,7 +113,7 @@ export class AppComponent implements OnInit {
         this._routerNavEndSubscription = this._router.events
             .pipe(filter((event) => event instanceof NavigationEnd))
             .pipe(map((e: NavigationEnd) => {
-                if (!this.previousURL || this.previousURL.split('?')[0] !== e.url.split('?')[0]) {
+                if (this.websocket && (!this.previousURL || this.previousURL.split('?')[0] !== e.url.split('?')[0])) {
                     this.previousURL = e.url;
                     this.manageWebsocketFilterByUrl(e.url);
                     return;
@@ -163,6 +164,7 @@ export class AppComponent implements OnInit {
                         this.manageWebsocketFilterProjectPath(urlSplitted, msg);
                 }
         }
+        this.currentFilter = msg;
         this.websocket.next(msg);
     }
 
@@ -211,8 +213,20 @@ export class AppComponent implements OnInit {
         const host = window.location.host;
         const href = this._router['location']._baseHref;
 
-        this.websocket = webSocket(`${protocol}//${host}${href}/cdsapi/ws`);
-        this.websocket.pipe(retryWhen(errors => errors.pipe(delay(5000)))).subscribe((message) => {
+        this.websocket = webSocket({
+            url: `${protocol}//${host}${href}/cdsapi/ws`,
+            openObserver: {
+                next: value => {
+                    if (value.type === 'open' && this.currentFilter) {
+                        this.websocket.next(this.currentFilter);
+                    }
+                }
+            }
+        });
+
+        this.websocket
+            .pipe(retryWhen(errors => errors.pipe(delay(5000))))
+            .subscribe((message) => {
             this._appService.manageEvent(message);
         }, (err) => {
             console.error('Error: ', err)
