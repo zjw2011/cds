@@ -1,6 +1,6 @@
 <div class="wrapper">
     <app-breadcrumb [path]="path"></app-breadcrumb>
-    <div class="content">
+    <div class="page-content">
         <app-menu class="menu" [items]="items" (onSelect)="selectItem($event)"></app-menu>
         <app-scrollview class="scrollview" *ngIf="selectedItem" [ngSwitch]="selectedItem.key">
             <ng-container *ngSwitchCase="'profile'" class="ui grid">
@@ -69,6 +69,83 @@
                         [loading]="loadingContacts"></app-data-table>
                 </div>
             </div>
+            <div *ngSwitchCase="'authentication'" class="ui grid">
+                <div class="sixteen wide column">
+                    <h2 class="ui header">
+                        <i class="id card icon small"></i>
+                        <div class="content">
+                            {{ 'user_auth_consumers' | translate }}
+                        </div>
+                    </h2>
+                    <div class="ui four stackable centered cards">
+                        <ng-container *ngFor="let d of drivers" [ngSwitch]="d.type">
+                            <div class="ui card" *ngSwitchCase="'local'">
+                                <div class="content">
+                                    <div class="center aligned header">
+                                        <i class="ui lock icon huge"></i>
+                                    </div>
+                                    <div class="center aligned description">
+                                        Local
+                                    </div>
+                                </div>
+                                <div class="extra content center aligned">
+                                    <button class="ui primary button small"
+                                        (click)="clickConsumerDetails(mConsumers[d.type])">{{'common_details' | translate}}</button>
+                                    <button class="ui green button small"
+                                        (click)="clickConsumerLocalReset()">{{'account_password_btn_reset' | translate}}</button>
+                                </div>
+                            </div>
+                            <div class="ui card" *ngSwitchDefault>
+                                <div class="content">
+                                    <div class="center aligned header">
+                                        <i class="ui {{d.type}} icon huge"></i>
+                                    </div>
+                                    <div class="center aligned description">
+                                        {{d.type | titlecase}}
+                                    </div>
+                                </div>
+                                <div class="extra content center aligned">
+                                    <ng-container *ngIf="mConsumers[d.type]">
+                                        <button class="ui primary button small"
+                                            (click)="clickConsumerDetails(mConsumers[d.type])">{{'common_details' | translate}}</button>
+                                        <app-confirm-button [class]="'small'" [color]="'red'"
+                                            (event)="clickConsumerDetach(mConsumers[d.type])"
+                                            [title]="'user_auth_consumer_detach_btn'">
+                                        </app-confirm-button>
+                                    </ng-container>
+                                    <ng-container *ngIf="!mConsumers[d.type]">
+                                        <button class="ui green button small"
+                                            (click)="clickConsumerSignin(d.type)">{{'account_btn_signin' | translate}}</button>
+                                    </ng-container>
+                                </div>
+                            </div>
+                        </ng-container>
+                    </div>
+                </div>
+                <div class="sixteen wide column">
+                    <h3 class="ui header">
+                        <div class="content">
+                            {{ 'user_auth_my_consumers' | translate }}
+                            <i class="add circle link icon green" (click)="clickConsumerCreate()"></i>
+                        </div>
+                    </h3>
+                    <app-data-table [withFilter]="filterConsumers" [withPagination]="10" [columns]="columnsConsumers"
+                        [data]="myConsumers" [loading]="loadingAuthData"></app-data-table>
+                </div>
+                <div class="sixteen wide column">
+                    <h2 class="ui header">
+                        <i class="alternate ticket icon small"></i>
+                        <div class="content">
+                            {{ 'user_auth_sessions' | translate }}
+                        </div>
+                    </h2>
+                    <app-data-table [withFilter]="filterSessions" [withPagination]="10" [columns]="columnsSessions"
+                        [data]="sessions" [loading]="loadingAuthData"></app-data-table>
+                </div>
+            </div>
         </app-scrollview>
     </div>
 </div>
+<app-consumer-create-modal #consumerCreateModal (close)="modalClose()"></app-consumer-create-modal>
+<app-consumer-details-modal #consumerDetailsModal [consumer]="selectedConsumer" (close)="modalClose()">
+</app-consumer-details-modal>

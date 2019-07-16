@@ -1,3 +1,4 @@
+import { Group } from './group.model';
 import { User } from './user.model';
 
 export class AuthDriverManifest {
@@ -9,6 +10,8 @@ export class AuthConsumerSigninResponse {
     token: string;
     user: User;
 }
+
+
 export class AuthConsumer {
     id: string;
     name: string;
@@ -19,4 +22,22 @@ export class AuthConsumer {
     created: string;
     group_ids: Array<number>;
     scopes: Array<string>;
+    groups: Array<Group>;
+
+    // UI fields
+    parent: AuthConsumer;
 }
+
+export class AuthSession {
+    id: string;
+    consumer_id: string;
+    expire_at: string;
+    created: string;
+    group_ids: Array<number>;
+    scopes: Array<string>;
+    current: boolean;
+
+    // UI fields
+    consumer: AuthConsumer;
+}
+

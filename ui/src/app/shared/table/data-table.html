@@ -68,7 +68,8 @@
                     <ng-container *ngSwitchCase="'date'"> {{c.selector | amCalendar}} </ng-container>
                     <button class="ui primary button small" *ngSwitchCase="'button'" (click)="c.selector.click()">{{c.selector.title
                         | translate}}</button>
-                    <app-confirm-button *ngSwitchCase="'confirm-button'" [class]="'small'" (event)="c.selector.click()"
+                    <app-confirm-button *ngSwitchCase="'confirm-button'" [class]="'small'"
+                        [color]="c.selector.color ? c.selector.color : 'primary'" (event)="c.selector.click()"
                         [title]="c.selector.title">
                     </app-confirm-button>
                     <span class="ui label {{c.selector.class}}" *ngSwitchCase="'label'">{{c.selector.value |
@@ -91,6 +92,12 @@
                                 translate}}
                         <span *ngFor="let l of c.selector.labels"
                             class="ui label {{l.color}}">{{l.title | translate}}</span>
+                    </span>
+                    <span *ngSwitchCase="'text-icons'">
+                        {{c.selector.value | translate}}
+                        <span *ngFor="let i of c.selector.icons" suiPopup [popupText]="i.label | translate" popupTrigger="{{i.trigger ? i.trigger : 'hover'}}">
+                            {{' '}}<i [ngClass]="i.class" title="{{i.title | translate }}"></i>
+                        </span>
                     </span>
                     <ng-container *ngSwitchDefault>
                         <ng-container *ngIf="c.selector && c.translate">
