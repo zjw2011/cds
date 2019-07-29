@@ -10,7 +10,7 @@
                     <div class="ui row">
                         <div class="ui wide column">
                             <sui-multi-select class="selection" [(ngModel)]="status" [options]="statusOptions"
-                                [isSearchable]="true" (ngModelChange)="statusFilterChange()" #multiSelect>
+                                [isSearchable]="true" (ngModelChange)="refreshQueue()" #multiSelect>
                                 <sui-select-option *ngFor="let option of multiSelect.filteredOptions" [value]="option">
                                 </sui-select-option>
                             </sui-multi-select>
@@ -38,7 +38,7 @@
                                 {{wNodeJobRun.queued | amTimeAgo}}
                             </td>
                             <td>
-                                {{wNodeJobRun.status}}
+                                {{wNodeJobRun.Status}}
                             </td>
                             <td>
                                 {{bookedOrBuildingByList[index]}}
@@ -67,7 +67,7 @@
                                 </span>
                             </td>
                             <td *ngIf="user.admin">
-                                <span *ngIf="wNodeJobRun.job != null && wNodeJobRun.job.action != null && wNodeJobRun.job.action.requirements != null">
+                                <span *ngIf="wNodeJobRun.Requirements">
                                     {{requirementsList[index]}}
                                 </span>
                             </td>

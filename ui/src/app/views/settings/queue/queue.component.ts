@@ -1,17 +1,18 @@
-import { Component, NgZone, OnDestroy } from '@angular/core';
+import { Component } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
+import { EventWorkflowNodeJobRunPayload } from 'app/model/event.model';
+import { PipelineStatus } from 'app/model/pipeline.model';
+import { User } from 'app/model/user.model';
+import { WorkflowRunService } from 'app/service/workflow/run/workflow.run.service';
+import { PathItem } from 'app/shared/breadcrumb/breadcrumb.component';
+import { AutoUnsubscribe } from 'app/shared/decorator/autoUnsubscribe';
+import { ToastService } from 'app/shared/toast/ToastService';
 import { AuthenticationState } from 'app/store/authentication.state';
+import { GetQueue } from 'app/store/queue.action';
+import { QueueState, QueueStateModel } from 'app/store/queue.state';
 import { Subscription } from 'rxjs';
 import { finalize } from 'rxjs/operators';
-import { PipelineStatus } from '../../../model/pipeline.model';
-import { User } from '../../../model/user.model';
-import { WorkflowNodeJobRun } from '../../../model/workflow.run.model';
-import { WorkflowRunService } from '../../../service/workflow/run/workflow.run.service';
-import { PathItem } from '../../../shared/breadcrumb/breadcrumb.component';
-import { AutoUnsubscribe } from '../../../shared/decorator/autoUnsubscribe';
-import { ToastService } from '../../../shared/toast/ToastService';
-import { CDSWebWorker } from '../../../shared/worker/web.worker';
 
 @Component({
     selector: 'app-queue',
@@ -19,19 +20,17 @@ import { CDSWebWorker } from '../../../shared/worker/web.worker';
     styleUrls: ['./queue.component.scss']
 })
 @AutoUnsubscribe()
-export class QueueComponent implements OnDestroy {
-    queueWorker: CDSWebWorker;
-    zone: NgZone;
+export class QueueComponent {
     queueSubscription: Subscription;
-    user: User;
-    nodeJobRuns: Array<WorkflowNodeJobRun> = [];
+    nodeJobRuns: Array<EventWorkflowNodeJobRunPayload> = [];
     parametersMaps: Array<{}> = [];
     requirementsList: Array<string> = [];
     bookedOrBuildingByList: Array<string> = [];
-    loading = true;
+    loading: boolean;
     statusOptions: Array<string> = [PipelineStatus.WAITING, PipelineStatus.BUILDING];
     status: Array<string>;
     path: Array<PathItem>;
+    user: User;
 
     constructor(
         private _store: Store,
@@ -39,11 +38,43 @@ export class QueueComponent implements OnDestroy {
         private _toast: ToastService,
         private _translate: TranslateService
     ) {
-        this.zone = new NgZone({ enableLongStackTrace: false });
         this.loading = true;
         this.status = [this.statusOptions[0]];
         this.user = this._store.selectSnapshot(AuthenticationState.user);
-        this.startWorker();
+
+        this.queueSubscription = this._store.select(QueueState.getCurrent()).subscribe((s: QueueStateModel) => {
+            this.nodeJobRuns = s.queue;
+            this.loading = s.loading;
+            if (Array.isArray(this.nodeJobRuns) && this.nodeJobRuns.length > 0) {
+                this.requirementsList = [];
+                this.bookedOrBuildingByList = [];
+                this.parametersMaps = this.nodeJobRuns.map((nj) => {
+                    if (this.user.admin && nj.Requirements) {
+                        let requirements = nj.Requirements
+                            .reduce((reqs, req) => `type: ${req.Type}, value: ${req.Value}; ${reqs}`, '');
+                        this.requirementsList.push(requirements);
+                    }
+                    this.bookedOrBuildingByList.push(((): string => {
+                        if (nj.Status === PipelineStatus.BUILDING) {
+                            return nj.WorkerName;
+                        }
+                        if (nj.BookByName) {
+                            return nj.BookByName;
+                        }
+                        return '';
+                    })());
+                    if (nj.Parameters) {
+                        return null;
+                    }
+                    return nj.Parameters.reduce((params, param) => {
+                        params[param.Name] = param.Value;
+                        return params;
+                    }, {});
+                });
+            }
+        });
+
+        this.refreshQueue();
 
         this.path = [<PathItem>{
             translate: 'common_settings'
@@ -52,75 +83,10 @@ export class QueueComponent implements OnDestroy {
         }];
     }
 
-    ngOnDestroy(): void {
-        if (this.queueWorker) {
-            this.queueWorker.stop();
-        }
+    refreshQueue(): void {
+        this._store.dispatch(new GetQueue({ status: (this.status.length > 0 ? this.status : this.statusOptions)}));
     }
 
-    statusFilterChange(): void {
-        this.queueWorker.stop();
-        this.queueWorker.start(this.getQueueWorkerParams());
-    }
-
-    getQueueWorkerParams(): any {
-        return {
-            'user': this._store.selectSnapshot(AuthenticationState.user),
-            // 'session': this._authStore.getSessionToken(),
-            'api': '/cdsapi',
-            'status': this.status.length > 0 ? this.status : this.statusOptions
-        };
-    }
-
-    startWorker() {
-        if (this.queueWorker) {
-            this.queueWorker.stop();
-        }
-        if (this.queueSubscription) {
-            this.queueSubscription.unsubscribe();
-        }
-        // Start web worker
-        this.queueWorker = new CDSWebWorker('./assets/worker/web/queue.js');
-        this.queueWorker.start(this.getQueueWorkerParams());
-
-        this.queueSubscription = this.queueWorker.response().subscribe(wrString => {
-            if (!wrString) {
-                return;
-            }
-            this.loading = false;
-            this.zone.run(() => {
-                this.nodeJobRuns = <Array<WorkflowNodeJobRun>>JSON.parse(wrString);
-
-                if (Array.isArray(this.nodeJobRuns) && this.nodeJobRuns.length > 0) {
-                    this.requirementsList = [];
-                    this.bookedOrBuildingByList = [];
-                    this.parametersMaps = this.nodeJobRuns.map((nj) => {
-                        if (this.user.admin && nj.job && nj.job.action && nj.job.action.requirements) {
-                            let requirements = nj.job.action.requirements
-                                .reduce((reqs, req) => `type: ${req.type}, value: ${req.value}; ${reqs}`, '');
-                            this.requirementsList.push(requirements);
-                        }
-                        this.bookedOrBuildingByList.push(((): string => {
-                            if (nj.status === PipelineStatus.BUILDING) {
-                                return nj.job.worker_name;
-                            }
-                            if (nj.bookedby !== null) {
-                                return nj.bookedby.name;
-                            }
-                            return '';
-                        })());
-                        if (!nj.parameters) {
-                            return null;
-                        }
-                        return nj.parameters.reduce((params, param) => {
-                            params[param.name] = param.value;
-                            return params;
-                        }, {});
-                    });
-                }
-            });
-        });
-    }
 
     stopNode(index: number) {
         let parameters = this.parametersMaps[index];

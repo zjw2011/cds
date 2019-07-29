@@ -157,9 +157,13 @@ func PublishWorkflowNodeRun(ctx context.Context, db gorp.SqlExecutor, nr sdk.Wor
 // PublishWorkflowNodeJobRun publish a WorkflowNodeJobRun
 func PublishWorkflowNodeJobRun(db gorp.SqlExecutor, pkey, wname string, jr sdk.WorkflowNodeJobRun) {
 	e := sdk.EventRunWorkflowJob{
-		ID:     jr.ID,
-		Status: jr.Status,
-		Start:  jr.Start.Unix(),
+		ID:           jr.ID,
+		Status:       jr.Status,
+		Start:        jr.Start.Unix(),
+		Requirements: jr.Job.Action.Requirements,
+		WorkerName:   jr.Job.WorkerName,
+		BookByName:   jr.BookedBy.Name,
+		Parameters:   jr.Parameters,
 	}
 
 	if sdk.StatusIsTerminated(jr.Status) {

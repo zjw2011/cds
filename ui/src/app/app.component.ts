@@ -161,6 +161,12 @@ export class AppComponent implements OnInit {
                         msg.project_key = urlSplitted[1].split('?')[0];
                         this.manageWebsocketFilterProjectPath(urlSplitted, msg);
                 }
+                break;
+            case 'settings':
+                if (urlSplitted.length === 2 && urlSplitted[1] === 'queue') {
+                    msg.queue = true;
+                }
+                break;
         }
         this.currentFilter = msg;
         this.websocket.next(msg);

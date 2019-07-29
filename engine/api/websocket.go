@@ -52,6 +52,7 @@ type WebsocketFilter struct {
 	WorkflowRunNumber int64  `json:"workflow_run_num"`
 	WorkflowNodeRunID int64  `json:"workflow_node_run_id"`
 	Favorites         bool   `json:"favorites"`
+	Queue             bool   `json:"queue"`
 }
 
 type WebsocketEvent struct {
@@ -107,7 +108,7 @@ func (b *websocketBroker) Start(ctx context.Context, panicCallback func(s string
 					func(ctx context.Context) {
 						if c.isAlive.IsSet() {
 							log.Debug("send data to %s", c.AuthConsumer.AuthentifiedUser.Username)
-							if err := c.send(receivedEvent); err != nil {
+							if err := c.send(ctx, b.dbFunc(), receivedEvent); err != nil {
 								b.chanRemoveClient <- c.UUID
 								log.Error("websocketBroker.Start> unable to send event to %s: %v", c.AuthConsumer.AuthentifiedUser.Username, err)
 							}
@@ -265,7 +266,7 @@ func (c *websocketClient) updateEventFilter(ctx context.Context, db gorp.SqlExec
 }
 
 // Send an event to a client
-func (c *websocketClient) send(event sdk.Event) (err error) {
+func (c *websocketClient) send(ctx context.Context, db gorp.SqlExecutor, event sdk.Event) (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	defer func() {
@@ -281,6 +282,8 @@ func (c *websocketClient) send(event sdk.Event) (err error) {
 	if c.filter.Favorites {
 		// TODO Check if event is on favorite
 		return nil
+	} else if c.filter.Queue && event.EventType == fmt.Sprintf("%T", sdk.WorkflowNodeJobRun{}) {
+		// TODO Manage right
 	} else {
 		if event.ProjectKey != c.filter.ProjectKey {
 			return nil
@@ -300,7 +303,11 @@ func (c *websocketClient) send(event sdk.Event) (err error) {
 		if c.filter.WorkflowRunNumber != 0 && event.WorkflowRunNum != c.filter.WorkflowRunNumber {
 			return nil
 		}
-		// TODO check node run event
+		if c.filter.WorkflowNodeRunID != 0 && event.WorkflowRunNum != c.filter.WorkflowRunNumber {
+			// TODO check node run event   // ID node RUN, SUbnumber
+
+		}
+
 	}
 
 	msg := WebsocketEvent{

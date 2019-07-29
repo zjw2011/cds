@@ -1,4 +1,3 @@
-
 importScripts('../common.js');
 
 var started = false;

@@ -1,16 +1,57 @@
 import {HttpClient, HttpParams} from '@angular/common/http';
 import {Injectable} from '@angular/core';
+import { EventWorkflowNodeJobRunPayload } from 'app/model/event.model';
+import { RequirementEventPayload } from 'app/model/requirement.model';
 import {Observable} from 'rxjs';
 import {map} from 'rxjs/operators';
 import {ServiceLog} from '../../../model/pipeline.model';
 import {Commit} from '../../../model/repositories.model';
 import {Workflow} from '../../../model/workflow.model';
-import {RunNumber, WorkflowNodeRun, WorkflowRun, WorkflowRunRequest} from '../../../model/workflow.run.model';
+import {
+    RunNumber,
+    WorkflowNodeJobRun,
+    WorkflowNodeRun,
+    WorkflowRun,
+    WorkflowRunRequest
+} from '../../../model/workflow.run.model';
 
 @Injectable()
 export class WorkflowRunService {
 
     constructor(private _http: HttpClient) {
+    }
+
+
+    queue(status: Array<string>): Observable<Array<EventWorkflowNodeJobRunPayload>> {
+        let url = '/queue/workflows';
+        let params = new HttpParams();
+        if (status) {
+            status.forEach(s => {
+                params = params.append('status', s);
+            });
+        }
+        return this._http.get<Array<WorkflowNodeJobRun>>(url, {params: params}).map(rs => {
+            return rs.map(j => {
+               let job = new EventWorkflowNodeJobRunPayload();
+               job.ID = j.id;
+               if (j.bookedby) {
+                   job.BookByName = j.bookedby.name;
+               }
+               job.Done = new Date(j.done).getTime();
+               job.Start = new Date(j.start).getTime();
+               job.Requirements = j.job.action.requirements.map(r => {
+                   let req = new RequirementEventPayload();
+                   req.Name = r.name;
+                   req.Opts = r.opts;
+                   req.Type = r.type;
+                   req.Value = r.value;
+                   return req;
+               });
+               job.Status = j.status;
+               job.WorkerName = j.job.worker_name;
+               return job;
+            });
+        });
     }
 
     /**

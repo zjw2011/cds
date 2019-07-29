@@ -1,3 +1,6 @@
+import { ParameterEventPayload } from 'app/model/parameter.model';
+import { RequirementEventPayload } from 'app/model/requirement.model';
+
 export class Event {
     healthCheck: number;
     timestamp: Date;
@@ -46,7 +49,8 @@ export class EventType {
 
     static RUN_WORKFLOW_PREFIX = 'sdk.EventRunWorkflow';
     static RUN_WORKFLOW_NODE = 'sdk.EventRunWorkflowNode';
-    static RUN_WORKFLOW_OUTGOING_HOOK = 'sdk.EventRunWorkflowOutgoingHook';
+    static RUN_WORKFLOW_NODE_JOB = 'sdk.WorkflowNodeJobRun';
+
 
     static BROADCAST_PREFIX = 'sdk.EventBroadcast';
     static BROADCAST_ADD = 'sdk.EventBroadcastAdd';
@@ -54,4 +58,18 @@ export class EventType {
     static BROADCAST_DELETE = 'sdk.EventBroadcastDelete';
 
     static ACTION_PREFIX = 'sdk.EventAction';
+}
+
+export class EventWorkflowNodeJobRunPayload {
+    ID: number;
+    Status: string;
+    Start: number;
+    Done: number;
+    Requirements: Array<RequirementEventPayload>;
+    WorkerName: string;
+    BookByName: string;
+    Parameters: Array<ParameterEventPayload>;
+
+    // ui arg
+    updating: boolean;
 }

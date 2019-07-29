@@ -2,11 +2,12 @@ import { Injectable } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
+import { UpdateQueue } from 'app/store/queue.action';
 import cloneDeep from 'lodash-es/cloneDeep';
 import { filter, first } from 'rxjs/operators';
 import { WebSocketSubject } from 'rxjs/webSocket';
 import { Broadcast, BroadcastEvent } from './model/broadcast.model';
-import { Event, EventType } from './model/event.model';
+import { Event, EventType, EventWorkflowNodeJobRunPayload } from './model/event.model';
 import { LoadOpts } from './model/project.model';
 import { TimelineFilter } from './model/timeline.model';
 import { BroadcastStore } from './service/broadcast/broadcast.store';
@@ -57,6 +58,14 @@ export class AppService {
             event.application_name, event.pipeline_name, event.environment_name);
         if (!event || !event.type_event) {
             return
+        }
+        if (event.type_event.indexOf(EventType.RUN_WORKFLOW_NODE_JOB) === 0) {
+            if (event.payload instanceof EventWorkflowNodeJobRunPayload) {
+                this._store.dispatch(new UpdateQueue({ job: event.payload }))
+            } else {
+                // TODO Remove after test
+                console.log('WRING PAYLOAD FOR NODE JOB RUN', event.payload);
+            }
         }
         if (event.type_event.indexOf(EventType.PROJECT_PREFIX) === 0 || event.type_event.indexOf(EventType.ENVIRONMENT_PREFIX) === 0 ||
             event.type_event === EventType.APPLICATION_ADD || event.type_event === EventType.APPLICATION_UPDATE ||
