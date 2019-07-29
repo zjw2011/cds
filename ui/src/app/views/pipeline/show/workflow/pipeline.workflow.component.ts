@@ -10,7 +10,6 @@ import { Subscription } from 'rxjs';
 import { finalize, first, flatMap } from 'rxjs/operators';
 import { Job } from '../../../../model/job.model';
 import { AllKeys } from '../../../../model/keys.model';
-import { PermissionValue } from '../../../../model/permission.model';
 import { Pipeline } from '../../../../model/pipeline.model';
 import { Project } from '../../../../model/project.model';
 import { Stage } from '../../../../model/stage.model';
@@ -78,15 +77,12 @@ export class PipelineWorkflowComponent implements OnInit, OnDestroy {
     selectedStage: Stage;
     selectedJob: Job;
     suggest: Array<string>;
-    permissionValue = PermissionValue;
     originalPipeline: Pipeline;
     keys: AllKeys;
     previewMode = false;
 
     loadingStage = false;
 
-    pipelinePreviewSubscription: Subscription;
-    asCodeEditorSubscription: Subscription;
     dragulaSubscription: Subscription;
 
     constructor(

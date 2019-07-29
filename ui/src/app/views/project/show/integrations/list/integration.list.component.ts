@@ -2,7 +2,6 @@ import { Component, Input, OnInit, ViewChild } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
 import { ProjectIntegration } from 'app/model/integration.model';
-import { PermissionValue } from 'app/model/permission.model';
 import { Project } from 'app/model/project.model';
 import { ThemeStore } from 'app/service/services.module';
 import { AutoUnsubscribe } from 'app/shared/decorator/autoUnsubscribe';
@@ -22,8 +21,6 @@ export class ProjectIntegrationListComponent extends Table<ProjectIntegration> i
     @ViewChild('codeMirror', {static: false}) codemirror: any;
 
     @Input() project: Project;
-
-    permissionEnum = PermissionValue;
     loading = false;
     codeMirrorConfig: any;
     themeSubscription: Subscription;

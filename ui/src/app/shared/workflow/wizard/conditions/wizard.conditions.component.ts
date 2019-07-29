@@ -10,7 +10,6 @@ import {
 } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
-import { PermissionValue } from 'app/model/permission.model';
 import { PipelineStatus } from 'app/model/pipeline.model';
 import { Project } from 'app/model/project.model';
 import {
@@ -78,7 +77,6 @@ export class WorkflowWizardNodeConditionComponent extends Table<WorkflowNodeCond
     loadingConditions = false;
     operators: Array<any>;
     conditionNames: Array<string>;
-    permission = PermissionValue;
     statuses = [PipelineStatus.SUCCESS, PipelineStatus.FAIL, PipelineStatus.SKIPPED];
     loading = false;
     previousValue: string;

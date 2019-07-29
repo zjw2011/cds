@@ -6,7 +6,6 @@ import * as actionsWorkflow from 'app/store/workflow.action';
 import { WorkflowState, WorkflowStateModel } from 'app/store/workflow.state';
 import { Subscription } from 'rxjs';
 import { finalize } from 'rxjs/operators';
-import { PermissionValue } from '../../../model/permission.model';
 import { Project } from '../../../model/project.model';
 import { Workflow } from '../../../model/workflow.model';
 import { WorkflowCoreService } from '../../../service/workflow/workflow.core.service';
@@ -46,8 +45,6 @@ export class WorkflowShowComponent implements OnInit {
     selectedHookRef: string;
 
     selectedTab = 'workflows';
-
-    permissionEnum = PermissionValue;
     permFormLoading = false;
 
     loading = false;

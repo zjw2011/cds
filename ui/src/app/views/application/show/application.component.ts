@@ -11,7 +11,6 @@ import { Subscription } from 'rxjs';
 import { filter, finalize } from 'rxjs/operators';
 import { Application } from '../../../model/application.model';
 import { Environment } from '../../../model/environment.model';
-import { PermissionValue } from '../../../model/permission.model';
 import { Pipeline } from '../../../model/pipeline.model';
 import { Project } from '../../../model/project.model';
 import { User } from '../../../model/user.model';
@@ -35,7 +34,6 @@ export class ApplicationShowComponent implements OnInit {
     public readyApp = false;
     public varFormLoading = false;
     public permFormLoading = false;
-    public notifFormLoading = false;
 
     // Project & Application data
     project: Project;
@@ -44,7 +42,6 @@ export class ApplicationShowComponent implements OnInit {
     // Subscription
     applicationSubscription: Subscription;
     projectSubscription: Subscription;
-    workerSubscription: Subscription;
     _routeParamsSub: Subscription;
     _routeDataSub: Subscription;
     _queryParamsSub: Subscription;
@@ -67,7 +64,6 @@ export class ApplicationShowComponent implements OnInit {
     environments: Array<Environment> = new Array<Environment>();
     currentUser: User;
     usageCount = 0;
-    perm = PermissionValue;
 
     constructor(
         private _applicationStore: ApplicationStore,
