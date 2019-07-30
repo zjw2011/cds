@@ -1,6 +1,7 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Action, createSelector, State, StateContext } from '@ngxs/store';
 import { GroupPermission } from 'app/model/group.model';
+import { Operation } from 'app/model/operation.model';
 import { WNode, WNodeHook, WNodeTrigger, Workflow } from 'app/model/workflow.model';
 import { WorkflowNodeRun, WorkflowRun } from 'app/model/workflow.run.model';
 import { NavbarService } from 'app/service/navbar/navbar.service';
@@ -23,6 +24,7 @@ export class WorkflowStateModel {
     loadingWorkflowRuns: boolean;
     loadingWorkflowRun: boolean;
     loadingWorkflowNodeRun: boolean;
+    operation: Operation;
     canEdit: boolean; // user permission
 
     sidebar: string;
@@ -42,6 +44,7 @@ export function getInitialWorkflowState(): WorkflowStateModel {
         loadingWorkflowRuns: false,
         loadingWorkflowRun: false,
         loadingWorkflowNodeRun: false,
+        operation: null,
         canEdit: false,
         workflowRun: null,
         workflowNodeRun: null,
@@ -856,6 +859,15 @@ export class WorkflowState {
         ctx.setState({
             ...state,
             sidebar: WorkflowSidebarMode.RUNS
+        });
+    }
+
+    @Action(actionWorkflow.UpdateOperation)
+    UpdateOperation(ctx: StateContext<WorkflowStateModel>, action: actionWorkflow.UpdateOperation) {
+        const state = ctx.getState();
+        ctx.setState({
+            ...state,
+            operation: action.payload.ope
         });
     }
 

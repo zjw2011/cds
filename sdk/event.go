@@ -30,6 +30,7 @@ type Event struct {
 	WorkflowName      string                 `json:"workflow_name,omitempty"`
 	WorkflowRunNum    int64                  `json:"workflow_run_num,omitempty"`
 	WorkflowRunNumSub int64                  `json:"workflow_run_num_sub,omitempty"`
+	OperationUUID     string                 `json:"operation_uuid,omitempty"`
 	Status            string                 `json:"status,omitempty"`
 	Tags              []WorkflowRunTag       `json:"tag,omitempty"`
 }

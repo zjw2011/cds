@@ -7,6 +7,8 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/ovh/cds/engine/api/event"
+	"github.com/ovh/cds/engine/api/operation"
 	"github.com/ovh/cds/engine/api/project"
 	"github.com/ovh/cds/engine/api/repositoriesmanager"
 	"github.com/ovh/cds/engine/api/workflow"
@@ -69,26 +71,12 @@ func (api *API) postImportAsCodeHandler() service.Handler {
 		}
 		ope.RepositoryStrategy.SSHKeyContent = ""
 
+		sdk.GoRoutine(context.Background(), fmt.Sprintf("ImportAsCodeResult-%s", ope.UUID), func(ctx context.Context) {
+			operation.Poller(ctx, api.mustDB(), ope, 300)
+			event.PublishOperationEvent(*ope, getAPIConsumer(ctx))
+		}, api.PanicDump())
+
 		return service.WriteJSON(w, ope, http.StatusCreated)
-	}
-}
-
-// getImportAsCodeHandler
-// @title Get import workflow as code operation details
-// @description This route helps you to know if a "import as code" is over, and the details of the performed operation
-// @requestBody None
-// @responseBody  {"uuid":"ee3946ac-3a77-46b1-af78-77868fde75ec","url":"https://github.com/fsamin/go-repo.git","strategy":{"connection_type":"","ssh_key":"","user":"","password":"","branch":"","default_branch":"","pgp_key":""},"setup":{"checkout":{}},"load_files":{"pattern":".cds/**/*.yml","results":{"w-go-repo.yml":"bmFtZTogdy1nby1yZXBvCgkJCQkJdmVyc2lvbjogdjEuMAoJCQkJCXBpcGVsaW5lOiBidWlsZAoJCQkJCWFwcGxpY2F0aW9uOiBnby1yZXBvCgkJCQkJcGlwZWxpbmVfaG9va3M6CgkJCQkJLSB0eXBlOiBSZXBvc2l0b3J5V2ViSG9vawoJCQkJCQ=="}},"status":2}
-func (api *API) getImportAsCodeHandler() service.Handler {
-	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		vars := mux.Vars(r)
-		uuid := vars["uuid"]
-
-		var ope = new(sdk.Operation)
-		ope.UUID = uuid
-		if err := workflow.GetRepositoryOperation(ctx, api.mustDB(), ope); err != nil {
-			return sdk.WrapError(err, "Cannot get repository operation status")
-		}
-		return service.WriteJSON(w, ope, http.StatusOK)
 	}
 }
 
@@ -119,7 +107,7 @@ func (api *API) postPerformImportAsCodeHandler() service.Handler {
 		var ope = new(sdk.Operation)
 		ope.UUID = uuid
 
-		if err := workflow.GetRepositoryOperation(ctx, api.mustDB(), ope); err != nil {
+		if err := operation.Get(ctx, api.mustDB(), ope); err != nil {
 			return sdk.WrapError(err, "Unable to get repository operation")
 		}
 

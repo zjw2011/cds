@@ -11,6 +11,7 @@ import (
 	"github.com/ovh/cds/engine/api/application"
 	"github.com/ovh/cds/engine/api/cache"
 	"github.com/ovh/cds/engine/api/event"
+	"github.com/ovh/cds/engine/api/operation"
 	"github.com/ovh/cds/engine/api/repositoriesmanager"
 	"github.com/ovh/cds/engine/api/services"
 	"github.com/ovh/cds/sdk"
@@ -177,11 +178,11 @@ func SyncAsCodeEvent(ctx context.Context, db gorp.SqlExecutor, store cache.Store
 func UpdateWorkflowAsCodeResult(ctx context.Context, db *gorp.DbMap, store cache.Store, p *sdk.Project, ope *sdk.Operation, wf *sdk.Workflow, u sdk.Identifiable) {
 	counter := 0
 	defer func() {
-		store.SetWithTTL(cache.Key(CacheOperationKey, ope.UUID), ope, 300)
+		event.PublishOperationEvent(*ope, u)
 	}()
 	for {
 		counter++
-		if err := GetRepositoryOperation(ctx, db, ope); err != nil {
+		if err := operation.Get(ctx, db, ope); err != nil {
 			log.Error("unable to get repository operation %s: %v", ope.UUID, err)
 			continue
 		}

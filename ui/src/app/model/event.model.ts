@@ -18,10 +18,12 @@ export class Event {
     workflow_name: string;
     status: string;
     workflow_run_num: number;
-    workflow_run_num_sub: number;
 }
 
 export class EventType {
+
+    static OPERATION = 'sdk.Operation';
+
     static PROJECT_PREFIX = 'sdk.EventProject';
     static PROJECT_DELETE = 'sdk.EventProjectDelete';
     static PROJECT_VARIABLE_PREFIX = 'sdk.EventProjectVariable';

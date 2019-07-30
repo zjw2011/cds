@@ -1,47 +1,59 @@
+/**
+ * Service to manage the websocket
+ */
 import { Injectable } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
+import { Broadcast, BroadcastEvent } from 'app/model/broadcast.model';
+import { Event, EventType, EventWorkflowNodeJobRunPayload } from 'app/model/event.model';
+import { Operation } from 'app/model/operation.model';
+import { LoadOpts } from 'app/model/project.model';
+import { TimelineFilter } from 'app/model/timeline.model';
+import { WebSocketEvent, WebSocketMessage } from 'app/model/websocket.model';
+import { BroadcastStore } from 'app/service/broadcast/broadcast.store';
+import { RouterService } from 'app/service/router/router.service';
+import { TimelineStore } from 'app/service/timeline/timeline.store';
+import { WorkflowRunService } from 'app/service/workflow/run/workflow.run.service';
+import { ToastService } from 'app/shared/toast/ToastService';
+import {
+    DeleteFromCacheApplication,
+    ExternalChangeApplication,
+    ResyncApplication
+} from 'app/store/applications.action';
+import { ApplicationsState, ApplicationsStateModel } from 'app/store/applications.state';
+import { AuthenticationState } from 'app/store/authentication.state';
+import { DeleteFromCachePipeline, ExternalChangePipeline, ResyncPipeline } from 'app/store/pipelines.action';
+import { PipelinesState, PipelinesStateModel } from 'app/store/pipelines.state';
+import * as projectActions from 'app/store/project.action';
+import { ProjectState, ProjectStateModel } from 'app/store/project.state';
 import { UpdateQueue } from 'app/store/queue.action';
-import cloneDeep from 'lodash-es/cloneDeep';
-import { filter, first } from 'rxjs/operators';
-import { WebSocketSubject } from 'rxjs/webSocket';
-import { Broadcast, BroadcastEvent } from './model/broadcast.model';
-import { Event, EventType, EventWorkflowNodeJobRunPayload } from './model/event.model';
-import { LoadOpts } from './model/project.model';
-import { TimelineFilter } from './model/timeline.model';
-import { BroadcastStore } from './service/broadcast/broadcast.store';
-import { RouterService, TimelineStore } from './service/services.module';
-import { WorkflowRunService } from './service/workflow/run/workflow.run.service';
-import { ToastService } from './shared/toast/ToastService';
-import { DeleteFromCacheApplication, ExternalChangeApplication, ResyncApplication } from './store/applications.action';
-import { ApplicationsState, ApplicationsStateModel } from './store/applications.state';
-import { AuthenticationState } from './store/authentication.state';
-import { DeleteFromCachePipeline, ExternalChangePipeline, ResyncPipeline } from './store/pipelines.action';
-import { PipelinesState, PipelinesStateModel } from './store/pipelines.state';
-import * as projectActions from './store/project.action';
-import { ProjectState, ProjectStateModel } from './store/project.state';
-import { ExternalChangeWorkflow, GetWorkflow, GetWorkflowRun, UpdateWorkflowRunList } from './store/workflow.action';
-import { WorkflowState } from './store/workflow.state';
+import {
+    ExternalChangeWorkflow,
+    GetWorkflow,
+    GetWorkflowRun,
+    UpdateOperation,
+    UpdateWorkflowRunList
+} from 'app/store/workflow.action';
+import { WorkflowState } from 'app/store/workflow.state';
+import { cloneDeep } from 'lodash-es';
+import { delay, filter, first, retryWhen } from 'rxjs/operators';
+import { webSocket, WebSocketSubject } from 'rxjs/webSocket';
 
 @Injectable()
-export class AppService {
+export class EventService {
 
-    // Information about current route
-    routeParams: {};
     websocket: WebSocketSubject<any>;
+    currentFilter: WebSocketMessage;
+    private connected: boolean;
     filter: TimelineFilter;
 
-    constructor(
-        private _routerService: RouterService,
-        private _routeActivated: ActivatedRoute,
-        private _translate: TranslateService,
-        private _broadcastStore: BroadcastStore,
-        private _timelineStore: TimelineStore,
-        private _toast: ToastService,
-        private _workflowRunService: WorkflowRunService,
-        private _store: Store
-    ) {
+    routeParams: {};
+
+    constructor(private _router: Router, private _toastService: ToastService, private _store: Store,
+                private _timelineStore: TimelineStore, private _routeActivated: ActivatedRoute,
+                private _routerService: RouterService, private _translate: TranslateService,
+                private _workflowRunService: WorkflowRunService, private _broadcastStore: BroadcastStore) {
         this.routeParams = this._routerService.getRouteParams({}, this._routeActivated);
     }
 
@@ -53,18 +65,67 @@ export class AppService {
         this.routeParams = params;
     }
 
+    startWebsocket() {
+        const protocol = window.location.protocol.replace('http', 'ws');
+        const host = window.location.host;
+        const href = this._router['location']._baseHref;
+
+        this.websocket = webSocket({
+            url: `${protocol}//${host}${href}/cdsapi/ws`,
+            openObserver: {
+                next: value => {
+                    if (value.type === 'open' && this.currentFilter) {
+                        this.connected = true;
+                        this.websocket.next(this.currentFilter);
+                    }
+                }
+            }
+        });
+
+        this.websocket
+            .pipe(retryWhen(errors => errors.pipe(delay(5000))))
+            .subscribe((message: WebSocketEvent) => {
+                if (message.status === 'OK') {
+                    this.manageEvent(message.event);
+                } else {
+                    this._toastService.error('', message.error);
+                }
+            }, (err) => {
+                console.error('Error: ', err)
+            }, () => {
+                console.warn('Websocket Completed');
+            });
+    }
+
+    isWebsocketConnected(): boolean {
+        return this.connected;
+    }
+
+    addOperationFilter(uuid: string) {
+        this.currentFilter.operation = uuid;
+        this.websocket.next(this.currentFilter);
+    }
+
+    updateFilter(f: WebSocketMessage): void {
+        this.currentFilter = f;
+        this.websocket.next(this.currentFilter);
+    }
+
     manageEvent(event: Event): void {
         console.log(event.type_event, event.project_key, event.workflow_name,
             event.application_name, event.pipeline_name, event.environment_name);
         if (!event || !event.type_event) {
             return
         }
+        if (event.type_event.indexOf(EventType.OPERATION) === 0) {
+            this._store.dispatch(new UpdateOperation({ope: <Operation>event.payload}))
+        }
         if (event.type_event.indexOf(EventType.RUN_WORKFLOW_NODE_JOB) === 0) {
             if (event.payload instanceof EventWorkflowNodeJobRunPayload) {
                 this._store.dispatch(new UpdateQueue({ job: event.payload }))
             } else {
                 // TODO Remove after test
-                console.log('WRING PAYLOAD FOR NODE JOB RUN', event.payload);
+                console.log('WRONG PAYLOAD FOR NODE JOB RUN', event.payload);
             }
         }
         if (event.type_event.indexOf(EventType.PROJECT_PREFIX) === 0 || event.type_event.indexOf(EventType.ENVIRONMENT_PREFIX) === 0 ||
@@ -134,7 +195,7 @@ export class AppService {
                     // if modification from another user, display a notification
                     if (event.username !== this._store.selectSnapshot(AuthenticationState.user).username) {
                         this._store.dispatch(new projectActions.ExternalChangeProject({ projectKey: projectInCache.key }));
-                        this._toast.info('', this._translate.instant('warning_project', { username: event.username }));
+                        this._toastService.info('', this._translate.instant('warning_project', { username: event.username }));
                         return;
                     }
                 } else {
@@ -202,7 +263,7 @@ export class AppService {
                 // modification by another user
                 if (event.username !== this._store.selectSnapshot(AuthenticationState.user).username) {
                     this._store.dispatch(new ExternalChangeApplication(payload));
-                    this._toast.info('', this._translate.instant('warning_application', { username: event.username }));
+                    this._toastService.info('', this._translate.instant('warning_application', { username: event.username }));
                     return;
                 }
             } else {
@@ -245,7 +306,7 @@ export class AppService {
                         projectKey: event.project_key,
                         pipelineName: event.pipeline_name
                     }));
-                    this._toast.info('', this._translate.instant('warning_pipeline', { username: event.username }));
+                    this._toastService.info('', this._translate.instant('warning_pipeline', { username: event.username }));
                     return;
                 }
             } else {
@@ -285,7 +346,7 @@ export class AppService {
                             projectKey: event.project_key,
                             workflowName: event.workflow_name
                         }));
-                        this._toast.info('', this._translate.instant('warning_workflow', { username: event.username }));
+                        this._toastService.info('', this._translate.instant('warning_workflow', { username: event.username }));
                         return;
                     }
                 } else {

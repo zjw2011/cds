@@ -10,6 +10,7 @@ export class WebSocketMessage {
     workflow_node_run_id: number;
     favorites: boolean;
     queue: boolean;
+    operation: string;
 }
 
 export class WebSocketEvent {

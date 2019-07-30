@@ -1,6 +1,6 @@
 import { AfterViewInit, Component, ViewChild } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
-import { AppService } from 'app/app.service';
+import { EventService } from 'app/event.service';
 import { finalize } from 'rxjs/operators';
 import { Subscription } from 'rxjs/Subscription';
 import { Event } from '../../../model/event.model';
@@ -27,7 +27,6 @@ export class HomeHeatmapComponent implements AfterViewInit {
     unfilteredWorkflows = new Object();
     properties = new Array<string>();
 
-    eventsIds = new Array();
     groupedEvents = new Object();
     unfilteredGroupedEvents = new Object();
 
@@ -51,7 +50,7 @@ export class HomeHeatmapComponent implements AfterViewInit {
         private _timelineStore: TimelineStore,
         private _toast: ToastService,
         public _translate: TranslateService,
-        private _appService: AppService
+        private _eventService: EventService
     ) {
         this.filter = new TimelineFilter();
     }
@@ -59,7 +58,7 @@ export class HomeHeatmapComponent implements AfterViewInit {
     ngAfterViewInit() {
         this.filterSub = this._timelineStore.getFilter().subscribe(f => {
             this.filter = f;
-            this._appService.initFilter(this.filter);
+            this._eventService.initFilter(this.filter);
 
             this.toolbar.getFilter().subscribe((filter) => {
                 this.heatmapSearch = filter;

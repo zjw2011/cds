@@ -11,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/ovh/cds/engine/api/feature"
 	"github.com/ovh/cds/engine/api/repositoriesmanager"
 	"github.com/ovh/cds/engine/api/services"
 	"github.com/ovh/cds/engine/api/test"
@@ -115,65 +114,6 @@ func Test_postImportAsCodeHandler(t *testing.T) {
 	w := httptest.NewRecorder()
 	api.Router.Mux.ServeHTTP(w, req)
 	assert.Equal(t, 201, w.Code)
-	myOpe := new(sdk.Operation)
-	test.NoError(t, json.Unmarshal(w.Body.Bytes(), myOpe))
-	assert.NotEmpty(t, myOpe.UUID)
-}
-
-func Test_getImportAsCodeHandler(t *testing.T) {
-	api, db, _, end := newTestAPI(t)
-	defer end()
-
-	u, pass := assets.InsertAdminUser(db)
-
-	_, _ = assets.InsertService(t, db, "Test_getImportAsCodeHandler", services.TypeRepositories)
-
-	UUID := sdk.UUID()
-
-	feature.SetClient(nil)
-
-	//This is a mock for the repositories service
-	services.HTTPClient = mock(
-		func(r *http.Request) (*http.Response, error) {
-			body := new(bytes.Buffer)
-			w := new(http.Response)
-			enc := json.NewEncoder(body)
-			w.Body = ioutil.NopCloser(body)
-
-			ope := new(sdk.Operation)
-			ope.URL = "https://github.com/fsamin/go-repo.git"
-			ope.UUID = UUID
-			ope.Status = sdk.OperationStatusDone
-			ope.LoadFiles.Pattern = workflow.WorkflowAsCodePattern
-			ope.LoadFiles.Results = map[string][]byte{
-				"w-go-repo.yml": []byte(`name: w-go-repo
-					version: v1.0
-					pipeline: build
-					application: go-repo
-					pipeline_hooks:
-					- type: RepositoryWebHook
-					`),
-			}
-			if err := enc.Encode(ope); err != nil {
-				return writeError(w, err)
-			}
-
-			w.StatusCode = http.StatusOK
-			return w, nil
-		},
-	)
-
-	uri := api.Router.GetRoute("GET", api.getImportAsCodeHandler, map[string]string{
-		"uuid": UUID,
-	})
-	req, err := http.NewRequest("GET", uri, nil)
-	test.NoError(t, err)
-	assets.AuthentifyRequest(t, req, u, pass)
-
-	// Do the request
-	w := httptest.NewRecorder()
-	api.Router.Mux.ServeHTTP(w, req)
-	assert.Equal(t, 200, w.Code)
 	myOpe := new(sdk.Operation)
 	test.NoError(t, json.Unmarshal(w.Body.Bytes(), myOpe))
 	assert.NotEmpty(t, myOpe.UUID)

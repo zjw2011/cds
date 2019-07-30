@@ -18,6 +18,7 @@ import (
 	"github.com/ovh/cds/engine/api/cache"
 	"github.com/ovh/cds/engine/api/keys"
 	"github.com/ovh/cds/engine/api/observability"
+	"github.com/ovh/cds/engine/api/operation"
 	"github.com/ovh/cds/engine/api/services"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/exportentities"
@@ -248,7 +249,7 @@ func pollRepositoryOperation(c context.Context, db gorp.SqlExecutor, store cache
 		case <-tickTimeout.C:
 			return sdk.WrapError(sdk.ErrRepoOperationTimeout, "pollRepositoryOperation> Timeout analyzing repository")
 		case <-tickPoll.C:
-			if err := GetRepositoryOperation(c, db, ope); err != nil {
+			if err := operation.Get(c, db, ope); err != nil {
 				return sdk.WrapError(err, "Cannot get repository operation status")
 			}
 			switch ope.Status {
@@ -346,19 +347,6 @@ func PostRepositoryOperation(ctx context.Context, db gorp.SqlExecutor, prj sdk.P
 	}
 	if _, err := services.DoMultiPartRequest(ctx, db, srvs, http.MethodPost, "/operations", multipartData, ope, ope); err != nil {
 		return sdk.WrapError(err, "Unable to perform multipart operation")
-	}
-	return nil
-}
-
-// GetRepositoryOperation get repository operation status
-func GetRepositoryOperation(ctx context.Context, db gorp.SqlExecutor, ope *sdk.Operation) error {
-	srvs, err := services.LoadAllByType(ctx, db, services.TypeRepositories)
-	if err != nil {
-		return sdk.WrapError(err, "Unable to found repositories service")
-	}
-
-	if _, _, err := services.DoJSONRequest(ctx, db, srvs, http.MethodGet, "/operations/"+ope.UUID, nil, ope); err != nil {
-		return sdk.WrapError(err, "Unable to get operation")
 	}
 	return nil
 }

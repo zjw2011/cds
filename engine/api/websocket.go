@@ -7,6 +7,7 @@ import (
 	"github.com/go-gorp/gorp"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,6 +54,7 @@ type WebsocketFilter struct {
 	WorkflowNodeRunID int64  `json:"workflow_node_run_id"`
 	Favorites         bool   `json:"favorites"`
 	Queue             bool   `json:"queue"`
+	Operation         string `json:"operation"`
 }
 
 type WebsocketEvent struct {
@@ -279,35 +281,50 @@ func (c *websocketClient) send(ctx context.Context, db gorp.SqlExecutor, event s
 		return nil
 	}
 
-	if c.filter.Favorites {
-		// TODO Check if event is on favorite
+	if event.EventType == fmt.Sprintf("%T", sdk.WorkflowNodeJobRun{}) && !c.filter.Queue {
 		return nil
-	} else if c.filter.Queue && event.EventType == fmt.Sprintf("%T", sdk.WorkflowNodeJobRun{}) {
-		// TODO Manage right
+		// OPERATION EVENT
+	} else if event.EventType == fmt.Sprintf("%T", sdk.Operation{}) && c.filter.Operation != event.OperationUUID {
+		return nil
 	} else {
-		if event.ProjectKey != c.filter.ProjectKey {
-			return nil
-		}
-		if c.filter.EnvironmentName != "" && event.EnvironmentName != c.filter.EnvironmentName {
-			return nil
-		}
-		if c.filter.PipelineName != "" && event.PipelineName != c.filter.PipelineName {
-			return nil
-		}
-		if c.filter.ApplicationName != "" && event.ApplicationName != c.filter.ApplicationName {
-			return nil
-		}
-		if c.filter.WorkflowName != "" && event.WorkflowName != c.filter.WorkflowName {
-			return nil
-		}
-		if c.filter.WorkflowRunNumber != 0 && event.WorkflowRunNum != c.filter.WorkflowRunNumber {
-			return nil
-		}
-		if c.filter.WorkflowNodeRunID != 0 && event.WorkflowRunNum != c.filter.WorkflowRunNumber {
-			// TODO check node run event   // ID node RUN, SUbnumber
+		switch {
+		// PROJECT EVENT
+		case strings.HasPrefix(event.EventType, "sdk.EventProject"):
+			if event.ProjectKey != c.filter.ProjectKey {
+				return nil
+			}
+			// APPLICATION EVENT
+		case strings.HasPrefix(event.EventType, "sdk.EventApplication"):
+			if event.ProjectKey != c.filter.ProjectKey || event.ApplicationName != c.filter.ApplicationName {
+				return nil
+			}
+			// PIPELINE EVENT
+		case strings.HasPrefix(event.EventType, "sdk.EventPipeline"):
+			if event.ProjectKey != c.filter.ProjectKey || event.PipelineName != c.filter.PipelineName {
+				return nil
+			}
+			// ENVIRONMENT EVENT
+		case strings.HasPrefix(event.EventType, "sdk.EventEnvironment"):
+			if event.ProjectKey != c.filter.ProjectKey || event.EnvironmentName != c.filter.EnvironmentName {
+				return nil
+			}
+			// WORKFLOW EVENT
+		case strings.HasPrefix(event.EventType, "sdk.EventWorkflow"):
+			if event.ProjectKey != c.filter.ProjectKey || event.WorkflowName != c.filter.WorkflowName {
+				return nil
+			}
+			// WORKFLOW RUN EVENT
+			if c.filter.WorkflowRunNumber != 0 && event.WorkflowRunNum != c.filter.WorkflowRunNumber {
+				return nil
+			}
+			// WORKFLOW NODE RUN EVENT
+			if c.filter.WorkflowNodeRunID != 0 && event.WorkflowRunNum != c.filter.WorkflowRunNumber {
+				// TODO check node run event   // ID node RUN, SUbnumber
 
+			}
+		default:
+			return nil
 		}
-
 	}
 
 	msg := WebsocketEvent{

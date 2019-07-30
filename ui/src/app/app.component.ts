@@ -6,13 +6,12 @@ import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, NavigationEnd, ResolveEnd, ResolveStart, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
-import { WebSocketEvent, WebSocketMessage } from 'app/model/websocket.model';
+import { EventService } from 'app/event.service';
+import { WebSocketMessage } from 'app/model/websocket.model';
 import { Observable } from 'rxjs';
-import { delay, filter, map, mergeMap, retryWhen } from 'rxjs/operators';
+import { filter, map, mergeMap } from 'rxjs/operators';
 import { Subscription } from 'rxjs/Subscription';
-import { webSocket, WebSocketSubject } from 'rxjs/webSocket';
 import * as format from 'string-format-obj';
-import { AppService } from './app.service';
 import { LanguageStore } from './service/language/language.store';
 import { NotificationService } from './service/notification/notification.service';
 import { ThemeStore } from './service/theme/theme.store';
@@ -44,9 +43,6 @@ export class AppComponent implements OnInit {
     toasterConfig: any;
     previousURL: string;
 
-    websocket: WebSocketSubject<any>;
-    currentFilter: WebSocketMessage;
-
     constructor(
         _translate: TranslateService,
         private _language: LanguageStore,
@@ -55,9 +51,9 @@ export class AppComponent implements OnInit {
         private _titleService: Title,
         private _router: Router,
         private _notification: NotificationService,
-        private _appService: AppService,
         private _toastService: ToastService,
-        private _store: Store
+        private _store: Store,
+        private _eventService: EventService
     ) {
         this.zone = new NgZone({ enableLongStackTrace: false });
         this.toasterConfig = this._toastService.getConfig();
@@ -92,7 +88,7 @@ export class AppComponent implements OnInit {
                 this.isConnected = false;
             } else {
                 this.isConnected = true;
-                this.startWebSocket();
+                this._eventService.startWebsocket();
             }
             this.startVersionWorker();
         });
@@ -111,7 +107,8 @@ export class AppComponent implements OnInit {
         this._routerNavEndSubscription = this._router.events
             .pipe(filter((event) => event instanceof NavigationEnd))
             .pipe(map((e: NavigationEnd) => {
-                if (this.websocket && (!this.previousURL || this.previousURL.split('?')[0] !== e.url.split('?')[0])) {
+                if (this._eventService.isWebsocketConnected()
+                    && (!this.previousURL || this.previousURL.split('?')[0] !== e.url.split('?')[0])) {
                     this.previousURL = e.url;
                     this.manageWebsocketFilterByUrl(e.url);
                     return;
@@ -125,7 +122,7 @@ export class AppComponent implements OnInit {
                     route = route.firstChild;
                     Object.assign(params, route.snapshot.params, route.snapshot.queryParams);
                 }
-                this._appService.updateRoute(params);
+                this._eventService.updateRoute(params);
                 return { route, params: Observable.of(params) };
             }))
             .pipe(filter((event) => event.route.outlet === 'primary'))
@@ -168,8 +165,8 @@ export class AppComponent implements OnInit {
                 }
                 break;
         }
-        this.currentFilter = msg;
-        this.websocket.next(msg);
+        this._eventService.updateFilter(msg);
+
     }
 
     manageWebsocketFilterProjectPath(urlSplitted: Array<string>, msg: WebSocketMessage) {
@@ -210,37 +207,6 @@ export class AppComponent implements OnInit {
         if (s) {
             s.unsubscribe();
         }
-    }
-
-    startWebSocket(): void {
-        const protocol = window.location.protocol.replace('http', 'ws');
-        const host = window.location.host;
-        const href = this._router['location']._baseHref;
-
-        this.websocket = webSocket({
-            url: `${protocol}//${host}${href}/cdsapi/ws`,
-            openObserver: {
-                next: value => {
-                    if (value.type === 'open' && this.currentFilter) {
-                        this.websocket.next(this.currentFilter);
-                    }
-                }
-            }
-        });
-
-        this.websocket
-            .pipe(retryWhen(errors => errors.pipe(delay(5000))))
-            .subscribe((message: WebSocketEvent) => {
-                if (message.status === 'OK') {
-                    this._appService.manageEvent(message.event);
-                } else {
-                    this._toastService.error('', message.error);
-                }
-        }, (err) => {
-            console.error('Error: ', err)
-        }, () => {
-            console.warn('Websocket Completed');
-        });
     }
 
     startVersionWorker(): void {
