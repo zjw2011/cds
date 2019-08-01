@@ -17,7 +17,6 @@ import { Tab } from '../../../../shared/tabs/tabs.component';
 @AutoUnsubscribe()
 export class ActionShowComponent implements OnInit {
     action: Action;
-    actionDoc: string;
     loadingUsage: boolean;
     usage: Usage;
     path: Array<PathItem>;

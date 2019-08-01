@@ -115,7 +115,7 @@ export class WorkflowNotificationListComponent {
     }
 
     deleteNotification(n: WorkflowNotification): void {
-        this.loading = true
+        this.loading = true;
         this.store.dispatch(new DeleteNotificationWorkflow({
             projectKey: this.project.key,
             workflowName: this.workflow.name,

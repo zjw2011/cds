@@ -141,7 +141,7 @@ export class WorkflowNodeRunComponent {
     }
 
     showTab(tab: string): void {
-        let queryParams = Object.assign({}, this._activatedRoute.snapshot.queryParams, { tab })
+        let queryParams = Object.assign({}, this._activatedRoute.snapshot.queryParams, { tab });
         let navExtras: NavigationExtras = { queryParams };
         this._router.navigate(['project', this.project.key,
             'workflow', this.workflowName,

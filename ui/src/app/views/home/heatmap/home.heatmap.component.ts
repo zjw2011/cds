@@ -109,11 +109,9 @@ export class HomeHeatmapComponent implements AfterViewInit {
                             });
                             if (eventsWorkflow.length > 0 && event.timestamp > eventsWorkflow[0].timestamp) {
                                 eventsWorkflow = eventsWorkflow.filter((pendingEvent: Event) => {
-                                    if (event.workflow_name === pendingEvent.workflow_name
-                                        && event.workflow_run_num === pendingEvent.workflow_run_num) {
-                                        return false;
-                                    }
-                                    return true;
+                                    return !(event.workflow_name === pendingEvent.workflow_name
+                                        && event.workflow_run_num === pendingEvent.workflow_run_num);
+
                                 });
                                 eventsWorkflow.push(event);
                             } else if (eventsWorkflow.length === 0) {

@@ -111,10 +111,8 @@ export class PipelineWorkflowComponent implements OnInit, OnDestroy {
                 return handle.classList.contains('move');
             },
             accepts: function (el, target, source, sibling) {
-                if (sibling === null) {
-                    return false;
-                }
-                return true;
+                return sibling !== null;
+
             }
         });
         this.dragulaSubscription = this._dragularService.drop('bag-stage').subscribe(({ el, source }) => {

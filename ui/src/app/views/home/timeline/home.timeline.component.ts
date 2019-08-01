@@ -29,7 +29,7 @@ export class HomeTimelineComponent implements OnInit {
     currentItem = 0;
     pipelineStatus = PipelineStatus;
 
-    filter: TimelineFilter
+    filter: TimelineFilter;
     filterSub: Subscription;
 
     constructor(private _timelineStore: TimelineStore,

@@ -110,11 +110,7 @@ export class HomeFilterComponent {
                         wn.mute = true;
                     } else {
                         let index = projFilter.workflow_names.findIndex(wwnn => wwnn === wn.name);
-                        if (index >= 0) {
-                            wn.mute = true;
-                        } else {
-                            wn.mute = false;
-                        }
+                        wn.mute = index >= 0;
                     }
                 });
                 if (mute) {

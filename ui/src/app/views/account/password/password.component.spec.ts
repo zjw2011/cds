@@ -1,6 +1,6 @@
 /* tslint:disable:no-unused-variable */
 
-import {fakeAsync, inject, TestBed, tick} from '@angular/core/testing';
+import {fakeAsync, TestBed, tick} from '@angular/core/testing';
 import {APP_BASE_HREF} from '@angular/common';
 import {UserService} from '../../../service/user/user.service';
 import {AuthentificationStore} from '../../../service/auth/authentification.store';

@@ -43,7 +43,7 @@ export class WorkflowBreadCrumbComponent {
                 text: this._project.name,
                 routerLink: ['/project', this._project.key],
                 queryParams: { tab: 'workflows' }
-            })
+            });
 
             if (this._workflow) {
                 path.push(<PathItem>{
@@ -51,7 +51,7 @@ export class WorkflowBreadCrumbComponent {
                     text: this._workflow.name,
                     active: this._workflow && !this._workflowRun,
                     routerLink: ['/project', this._project.key, 'workflow', this._workflow.name],
-                })
+                });
 
                 if (this._workflowRun) {
                     path.push(<PathItem>{

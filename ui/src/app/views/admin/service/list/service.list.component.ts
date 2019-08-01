@@ -46,7 +46,7 @@ export class ServiceListComponent {
                                 }
                             }
                         }
-                    })
+                    });
                     r.lines.forEach(g => {
                         if (g.component.startsWith('Global/')) {
                             let type = g.component.slice(7);
@@ -56,14 +56,14 @@ export class ServiceListComponent {
                                         value: g.value,
                                         name: type,
                                         status: g.status
-                                    }
+                                    };
                                     break;
                                 case 'Version':
                                     this.globalVersion = <Global>{
                                         value: g.value,
                                         name: type,
                                         status: g.status
-                                    }
+                                    };
                                     break;
                                 default:
                                     this.globals.push(<Global>{

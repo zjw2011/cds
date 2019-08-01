@@ -56,7 +56,7 @@ export class WorkflowRunTestTableComponent extends Table<TestCase> {
                             this.filteredTests.push(ftc);
                         }
                     }
-                };
+                }
                 break;
             case 'skipped':
                 for (let ts of this.tests) {
@@ -71,7 +71,7 @@ export class WorkflowRunTestTableComponent extends Table<TestCase> {
                             this.filteredTests.push(...testCases);
                         }
                     }
-                };
+                }
                 break;
             default:
                 for (let ts of this.tests) {

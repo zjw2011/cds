@@ -65,9 +65,9 @@ export class BroadcastEditComponent {
             });
 
         this.paramsSub = this._route.params.subscribe(params => {
-            let id = parseInt(params['id'], 10)
+            let id = parseInt(params['id'], 10);
             this.broadcastSub = this._broadcastStore.getBroadcasts(id).subscribe(bcs => {
-                let broadcast = bcs.get(id)
+                let broadcast = bcs.get(id);
                 if (broadcast) {
                     this.broadcast = broadcast;
                     if (this.currentUser.admin) {

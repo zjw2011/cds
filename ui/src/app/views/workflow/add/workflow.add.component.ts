@@ -223,7 +223,7 @@ workflow:
     startOperationWorker(uuid: string): void {
         // poll operation
         let zone = new NgZone({ enableLongStackTrace: false });
-        let webworker = new CDSWebWorker('./assets/worker/web/operation.js')
+        let webworker = new CDSWebWorker('./assets/worker/web/operation.js');
         webworker.start({
             'user': this._authStore.getUser(),
             'session': this._authStore.getSessionToken(),
@@ -278,7 +278,7 @@ workflow:
     }
 
     fileEventIcon(event: { content: string, file: File }) {
-        this.fileTooLarge = event.file.size > 100000
+        this.fileTooLarge = event.file.size > 100000;
         if (this.fileTooLarge) {
             return;
         }

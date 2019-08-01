@@ -31,7 +31,7 @@ export class WorkflowTemplateFormComponent {
             this._workflowTemplate = <WorkflowTemplate>{ editable: true };
         }
 
-        this.importFromURLControl.setValue(!!this._workflowTemplate.import_url)
+        this.importFromURLControl.setValue(!!this._workflowTemplate.import_url);
         this.importFromURL = this.importFromURLControl.value;
 
         this.changeMessage = null;
@@ -150,7 +150,7 @@ export class WorkflowTemplateFormComponent {
 
     clickSave() {
         if (this.importFromURL) {
-            this.save.emit({ import_url: this.workflowTemplate.import_url })
+            this.save.emit({ import_url: this.workflowTemplate.import_url });
             return;
         }
 
@@ -212,7 +212,7 @@ export class WorkflowTemplateFormComponent {
 
     clickAddParameter() {
         let k = this.parameterValueAdd.key;
-        this.parameterKeys.push(k)
+        this.parameterKeys.push(k);
         this.parameterValues[k] = this.parameterValueAdd;
         this.resetParameterValue();
     }
