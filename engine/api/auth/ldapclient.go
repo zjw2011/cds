@@ -244,19 +244,23 @@ func (c *LDAPClient) Search(filter string, attributes ...string) ([]Entry, error
 	attr := append(attributes, "dn")
 
 	if c.conf.BindDN != "" {
-		log.Debug("LDAP> Bind user %s", c.conf.BindDN)
+		log.Debug("LDAP> Search> Bind user %s", c.conf.BindDN)
 		if err := c.conn.Bind(c.conf.BindDN, c.conf.BindPwd); err != nil {
 			if !shoudRetry(err) {
-				return nil, err
+				return nil, sdk.WithStack(err)
 			}
 			if err := c.openLDAP(c.conf); err != nil {
-				return nil, err
+				return nil, sdk.WithStack(err)
 			}
 			if err := c.conn.Bind(c.conf.BindDN, c.conf.BindPwd); err != nil {
-				return nil, err
+				return nil, sdk.WithStack(err)
 			}
 		}
+
+		log.Debug("LDAP> Search> Bind user %s done", c.conf.BindDN)
 	}
+
+	log.Debug("LDAP> Search> Doing search with c.conf.Base:%s filter:%s attr:%s", c.conf.Base, filter, attr)
 
 	// Search for the given username
 	searchRequest := ldap.NewSearchRequest(
@@ -269,19 +273,23 @@ func (c *LDAPClient) Search(filter string, attributes ...string) ([]Entry, error
 
 	sr, err := c.conn.Search(searchRequest)
 	if err != nil {
+		log.Debug("LDAP> Search> conn.Search error: %v", err)
 		if !shoudRetry(err) {
-			return nil, err
+			return nil, sdk.WithStack(err)
 		}
 		if err := c.openLDAP(c.conf); err != nil {
-			return nil, err
+			return nil, sdk.WithStack(err)
 		}
 		sr, err = c.conn.Search(searchRequest)
 		if err != nil {
-			return nil, err
+			return nil, sdk.WithStack(err)
 		}
 	}
 
+	log.Debug("LDAP> Search> nb. sr.entries: %d", len(sr.Entries))
+
 	if len(sr.Entries) < 1 {
+		log.Debug("LDAP> Search> user not found")
 		return nil, errors.New(errUserNotFound)
 	}
 
@@ -296,6 +304,8 @@ func (c *LDAPClient) Search(filter string, attributes ...string) ([]Entry, error
 		}
 		entries = append(entries, entry)
 	}
+
+	log.Debug("LDAP> Search> nb. entries: %d", len(entries))
 
 	return entries, nil
 }
@@ -384,6 +394,7 @@ func (c *LDAPClient) Authentify(username, password string) (bool, error) {
 	// Search user
 	r, err := c.Search("(&(uid=" + username + "))")
 	if err != nil {
+		log.Warning("LDAP> Authentify> Search failed with username:%s err:%v", username, err)
 		return false, nil
 	}
 
