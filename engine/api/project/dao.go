@@ -191,11 +191,6 @@ func Update(db gorp.SqlExecutor, store cache.Store, proj *sdk.Project) error {
 // DeleteByID removes given project from database (project and project_group table)
 // DeleteByID also removes all pipelines inside project (pipeline and pipeline_group table).
 func DeleteByID(db gorp.SqlExecutor, id int64) error {
-	log.Debug("project.Delete> Deleting project %d", id)
-	if err := group.DeleteGroupProjectByProject(db, id); err != nil {
-		return err
-	}
-
 	if err := deleteAllVariable(db, id); err != nil {
 		return err
 	}
@@ -212,61 +207,6 @@ func DeleteByID(db gorp.SqlExecutor, id int64) error {
 		return err
 	}
 	return nil
-}
-
-// LoadOptionFunc is used as options to loadProject functions
-type LoadOptionFunc *func(gorp.SqlExecutor, cache.Store, *sdk.Project) error
-
-// LoadOptions provides all options on project loads functions
-var LoadOptions = struct {
-	Default                                 LoadOptionFunc
-	WithIcon                                LoadOptionFunc
-	WithApplications                        LoadOptionFunc
-	WithApplicationNames                    LoadOptionFunc
-	WithVariables                           LoadOptionFunc
-	WithVariablesWithClearPassword          LoadOptionFunc
-	WithPipelines                           LoadOptionFunc
-	WithPipelineNames                       LoadOptionFunc
-	WithEnvironments                        LoadOptionFunc
-	WithEnvironmentNames                    LoadOptionFunc
-	WithGroups                              LoadOptionFunc
-	WithPermission                          LoadOptionFunc
-	WithApplicationVariables                LoadOptionFunc
-	WithApplicationWithDeploymentStrategies LoadOptionFunc
-	WithKeys                                LoadOptionFunc
-	WithWorkflows                           LoadOptionFunc
-	WithWorkflowNames                       LoadOptionFunc
-	WithLockNoWait                          LoadOptionFunc
-	WithClearKeys                           LoadOptionFunc
-	WithIntegrations                        LoadOptionFunc
-	WithClearIntegrations                   LoadOptionFunc
-	WithFavorites                           func(uID int64) LoadOptionFunc
-	WithFeatures                            LoadOptionFunc
-	WithLabels                              LoadOptionFunc
-}{
-	Default:                                 &loadDefault,
-	WithIcon:                                &loadIcon,
-	WithPipelines:                           &loadPipelines,
-	WithPipelineNames:                       &loadPipelineNames,
-	WithEnvironments:                        &loadEnvironments,
-	WithEnvironmentNames:                    &loadEnvironmentNames,
-	WithGroups:                              &loadGroups,
-	WithApplications:                        &loadApplications,
-	WithApplicationNames:                    &loadApplicationNames,
-	WithVariables:                           &loadVariables,
-	WithVariablesWithClearPassword:          &loadVariablesWithClearPassword,
-	WithApplicationVariables:                &loadApplicationVariables,
-	WithKeys:                                &loadKeys,
-	WithWorkflows:                           &loadWorkflows,
-	WithWorkflowNames:                       &loadWorkflowNames,
-	WithLockNoWait:                          &lockAndWaitProject,
-	WithClearKeys:                           &loadClearKeys,
-	WithIntegrations:                        &loadIntegrations,
-	WithClearIntegrations:                   &loadClearIntegrations,
-	WithFavorites:                           loadFavorites,
-	WithFeatures:                            &loadFeatures,
-	WithApplicationWithDeploymentStrategies: &loadApplicationWithDeploymentStrategies,
-	WithLabels:                              &loadLabels,
 }
 
 // LoadProjectByNodeJobRunID return a project from node job run id
@@ -353,20 +293,9 @@ func load(ctx context.Context, db gorp.SqlExecutor, store cache.Store, opts []Lo
 	defer end()
 
 	dbProj := &dbProject{}
-	needLock := false
-	for _, o := range opts {
-		if o == LoadOptions.WithLockNoWait {
-			query += " FOR UPDATE SKIP LOCKED"
-			needLock = true
-			break
-		}
-	}
 
 	if err := db.SelectOne(dbProj, query, args...); err != nil {
 		if err == sql.ErrNoRows {
-			if needLock {
-				return nil, sdk.WithStack(sdk.ErrLocked)
-			}
 			return nil, sdk.WithStack(sdk.ErrNoProject)
 		}
 		return nil, sdk.WithStack(err)
@@ -382,7 +311,7 @@ func unwrap(db gorp.SqlExecutor, store cache.Store, p *dbProject, opts []LoadOpt
 		if f == nil {
 			continue
 		}
-		if err := (*f)(db, store, &proj); err != nil && sdk.Cause(err) != sql.ErrNoRows {
+		if err := f(db, store, &proj); err != nil && sdk.Cause(err) != sql.ErrNoRows {
 			return nil, err
 		}
 	}

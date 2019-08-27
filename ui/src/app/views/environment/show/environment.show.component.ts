@@ -1,11 +1,11 @@
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
 import { Environment } from 'app/model/environment.model';
 import { Pipeline } from 'app/model/pipeline.model';
 import { Project } from 'app/model/project.model';
-import { User } from 'app/model/user.model';
+import { AuthentifiedUser } from 'app/model/user.model';
 import { Workflow } from 'app/model/workflow.model';
 import { AutoUnsubscribe } from 'app/shared/decorator/autoUnsubscribe';
 import { ToastService } from 'app/shared/toast/ToastService';
@@ -21,7 +21,8 @@ import { filter, finalize } from 'rxjs/operators';
 @Component({
     selector: 'app-environment-show',
     templateUrl: './environment.show.html',
-    styleUrls: ['./environment.show.scss']
+    styleUrls: ['./environment.show.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 @AutoUnsubscribe()
 export class EnvironmentShowComponent implements OnInit {
@@ -30,7 +31,6 @@ export class EnvironmentShowComponent implements OnInit {
     public readyEnv = false;
     public varFormLoading = false;
     public permFormLoading = false;
-    public notifFormLoading = false;
 
     // Project & Application data
     project: Project;
@@ -39,7 +39,6 @@ export class EnvironmentShowComponent implements OnInit {
     // Subscription
     environmentSubscription: Subscription;
     projectSubscription: Subscription;
-    workerSubscription: Subscription;
     _routeParamsSub: Subscription;
     _routeDataSub: Subscription;
     _queryParamsSub: Subscription;
@@ -57,7 +56,7 @@ export class EnvironmentShowComponent implements OnInit {
     pipelines: Array<Pipeline> = new Array<Pipeline>();
     workflows: Array<Workflow> = new Array<Workflow>();
     environments: Array<Environment> = new Array<Environment>();
-    currentUser: User;
+    currentUser: AuthentifiedUser;
     usageCount = 0;
 
     constructor(
@@ -65,7 +64,8 @@ export class EnvironmentShowComponent implements OnInit {
         private _router: Router,
         private _toast: ToastService,
         public _translate: TranslateService,
-        private store: Store
+        private store: Store,
+        private _cd: ChangeDetectorRef
     ) {
         this.currentUser = this.store.selectSnapshot(AuthenticationState.user);
         // Update data if route change
@@ -112,6 +112,7 @@ export class EnvironmentShowComponent implements OnInit {
                                 this.pipelines = env.usage.pipelines || [];
                                 this.usageCount = this.pipelines.length + this.environments.length + this.workflows.length;
                             }
+                            this._cd.markForCheck();
                         }, () => {
                             this._router.navigate(['/project', key], { queryParams: { tab: 'environments' } });
                         });
@@ -146,7 +147,10 @@ export class EnvironmentShowComponent implements OnInit {
                     projectKey: this.project.key,
                     environmentName: this.environment.name,
                     variable: event.variable
-                })).pipe(finalize(() => this.varFormLoading = false))
+                })).pipe(finalize(() => {
+                    this.varFormLoading = false;
+                    this._cd.markForCheck();
+                }))
                     .subscribe(() => this._toast.success('', this._translate.instant('variable_added')));
                 break;
             case 'update':
@@ -155,7 +159,10 @@ export class EnvironmentShowComponent implements OnInit {
                     environmentName: this.environment.name,
                     variableName: event.variable.name,
                     changes: event.variable
-                })).pipe(finalize(() => event.variable.updating = false))
+                })).pipe(finalize(() => {
+                    event.variable.updating = false;
+                    this._cd.markForCheck();
+                }))
                     .subscribe(() => this._toast.success('', this._translate.instant('variable_updated')));
                 break;
             case 'delete':
@@ -163,7 +170,10 @@ export class EnvironmentShowComponent implements OnInit {
                     projectKey: this.project.key,
                     environmentName: this.environment.name,
                     variable: event.variable
-                })).pipe(finalize(() => event.variable.updating = false))
+                })).pipe(finalize(() => {
+                    event.variable.updating = false;
+                    this._cd.markForCheck();
+                }))
                     .subscribe(() => this._toast.success('', this._translate.instant('variable_deleted')));
                 break;
         }

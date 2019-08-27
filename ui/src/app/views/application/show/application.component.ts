@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
@@ -13,7 +13,7 @@ import { Application } from '../../../model/application.model';
 import { Environment } from '../../../model/environment.model';
 import { Pipeline } from '../../../model/pipeline.model';
 import { Project } from '../../../model/project.model';
-import { User } from '../../../model/user.model';
+import { AuthentifiedUser } from '../../../model/user.model';
 import { Workflow } from '../../../model/workflow.model';
 import { ApplicationStore } from '../../../service/application/application.store';
 import { AutoUnsubscribe } from '../../../shared/decorator/autoUnsubscribe';
@@ -25,7 +25,8 @@ import { CDSWebWorker } from '../../../shared/worker/web.worker';
 @Component({
     selector: 'app-application-show',
     templateUrl: './application.html',
-    styleUrls: ['./application.scss']
+    styleUrls: ['./application.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 @AutoUnsubscribe()
 export class ApplicationShowComponent implements OnInit {
@@ -50,7 +51,7 @@ export class ApplicationShowComponent implements OnInit {
     // Selected tab
     selectedTab = 'home';
 
-    @ViewChild('varWarning', {static: false})
+    @ViewChild('varWarning', { static: false })
     private varWarningModal: WarningModalComponent;
 
     // queryparam for breadcrum
@@ -62,7 +63,7 @@ export class ApplicationShowComponent implements OnInit {
     pipelines: Array<Pipeline> = new Array<Pipeline>();
     workflows: Array<Workflow> = new Array<Workflow>();
     environments: Array<Environment> = new Array<Environment>();
-    currentUser: User;
+    currentUser: AuthentifiedUser;
     usageCount = 0;
 
     constructor(
@@ -71,7 +72,8 @@ export class ApplicationShowComponent implements OnInit {
         private _router: Router,
         private _toast: ToastService,
         public _translate: TranslateService,
-        private _store: Store
+        private _store: Store,
+        private _cd: ChangeDetectorRef
     ) {
         this.currentUser = this._store.selectSnapshot(AuthenticationState.user);
         // Update data if route change
@@ -121,11 +123,13 @@ export class ApplicationShowComponent implements OnInit {
 
                             // Update recent application viewed
                             this._applicationStore.updateRecentApplication(key, this.application);
+                            this._cd.markForCheck();
 
                         }, () => {
                             this._router.navigate(['/project', key], { queryParams: { tab: 'applications' } });
                         })
                 }
+                this._cd.markForCheck();
             }
         });
     }
@@ -136,6 +140,7 @@ export class ApplicationShowComponent implements OnInit {
             if (tab) {
                 this.selectedTab = tab;
             }
+            this._cd.markForCheck();
         });
     }
 
@@ -162,6 +167,7 @@ export class ApplicationShowComponent implements OnInit {
                     })).pipe(finalize(() => {
                         event.variable.updating = false;
                         this.varFormLoading = false;
+                        this._cd.markForCheck();
                     })).subscribe(() => this._toast.success('', this._translate.instant('variable_added')));
                     break;
                 case 'update':
@@ -170,7 +176,10 @@ export class ApplicationShowComponent implements OnInit {
                         applicationName: this.application.name,
                         variableName: event.variable.name,
                         variable: event.variable
-                    })).pipe(finalize(() => event.variable.updating = false))
+                    })).pipe(finalize(() => {
+                        event.variable.updating = false;
+                        this._cd.markForCheck();
+                    }))
                         .subscribe(() => this._toast.success('', this._translate.instant('variable_updated')));
                     break;
                 case 'delete':
@@ -178,7 +187,8 @@ export class ApplicationShowComponent implements OnInit {
                         projectKey: this.project.key,
                         applicationName: this.application.name,
                         variable: event.variable
-                    })).subscribe(() => this._toast.success('', this._translate.instant('variable_deleted')));
+                    })).pipe(finalize(() => this._cd.markForCheck()))
+                        .subscribe(() => this._toast.success('', this._translate.instant('variable_deleted')));
                     break;
             }
         }

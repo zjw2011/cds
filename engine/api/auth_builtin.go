@@ -49,7 +49,7 @@ func (api *API) postAuthBuiltinSigninHandler() service.Handler {
 		}
 
 		// Generate a new session for consumer
-		session, err := authentication.NewSession(tx, consumer, driver.GetSessionDuration())
+		session, err := authentication.NewSession(tx, consumer, driver.GetSessionDuration(), false)
 		if err != nil {
 			return err
 		}
@@ -92,11 +92,5 @@ func (api *API) postAuthBuiltinSigninHandler() service.Handler {
 		w.Header().Set("X-Api-Pub-Signing-Key", encodedPubKey)
 
 		return service.WriteJSON(w, resp, http.StatusOK)
-	}
-}
-
-func (api *API) postAuthBuiltinSignoutHandler() service.Handler {
-	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		return nil
 	}
 }

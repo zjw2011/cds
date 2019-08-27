@@ -5,40 +5,36 @@ import { Injectable } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
-import { Broadcast, BroadcastEvent } from 'app/model/broadcast.model';
-import { Event, EventType, EventWorkflowNodeJobRunPayload } from 'app/model/event.model';
 import { Operation } from 'app/model/operation.model';
-import { LoadOpts } from 'app/model/project.model';
-import { TimelineFilter } from 'app/model/timeline.model';
 import { WebSocketEvent, WebSocketMessage } from 'app/model/websocket.model';
-import { BroadcastStore } from 'app/service/broadcast/broadcast.store';
-import { RouterService } from 'app/service/router/router.service';
-import { TimelineStore } from 'app/service/timeline/timeline.store';
-import { WorkflowRunService } from 'app/service/workflow/run/workflow.run.service';
-import { ToastService } from 'app/shared/toast/ToastService';
-import {
-    DeleteFromCacheApplication,
-    ExternalChangeApplication,
-    ResyncApplication
-} from 'app/store/applications.action';
-import { ApplicationsState, ApplicationsStateModel } from 'app/store/applications.state';
-import { AuthenticationState } from 'app/store/authentication.state';
-import { DeleteFromCachePipeline, ExternalChangePipeline, ResyncPipeline } from 'app/store/pipelines.action';
-import { PipelinesState, PipelinesStateModel } from 'app/store/pipelines.state';
-import * as projectActions from 'app/store/project.action';
-import { ProjectState, ProjectStateModel } from 'app/store/project.state';
 import { UpdateQueue } from 'app/store/queue.action';
+import cloneDeep from 'lodash-es/cloneDeep';
+import { delay, filter, first, retryWhen } from 'rxjs/operators';
+import { webSocket, WebSocketSubject } from 'rxjs/webSocket';
+import { Broadcast, BroadcastEvent } from './model/broadcast.model';
+import { Event, EventType, EventWorkflowNodeJobRunPayload } from './model/event.model';
+import { LoadOpts } from './model/project.model';
+import { TimelineFilter } from './model/timeline.model';
+import { BroadcastStore } from './service/broadcast/broadcast.store';
+import { RouterService, TimelineStore } from './service/services.module';
+import { WorkflowRunService } from './service/workflow/run/workflow.run.service';
+import { ToastService } from './shared/toast/ToastService';
+import { DeleteFromCacheApplication, ExternalChangeApplication, ResyncApplication } from './store/applications.action';
+import { ApplicationsState, ApplicationsStateModel } from './store/applications.state';
+import { AuthenticationState } from './store/authentication.state';
+import { DeleteFromCachePipeline, ExternalChangePipeline, ResyncPipeline } from './store/pipelines.action';
+import { PipelinesState, PipelinesStateModel } from './store/pipelines.state';
+import * as projectActions from './store/project.action';
+import { ProjectState, ProjectStateModel } from './store/project.state';
 import {
     ExternalChangeWorkflow,
     GetWorkflow,
+    GetWorkflowNodeRun,
     GetWorkflowRun,
     UpdateOperation,
     UpdateWorkflowRunList
-} from 'app/store/workflow.action';
-import { WorkflowState } from 'app/store/workflow.state';
-import { cloneDeep } from 'lodash-es';
-import { delay, filter, first, retryWhen } from 'rxjs/operators';
-import { webSocket, WebSocketSubject } from 'rxjs/webSocket';
+} from './store/workflow.action';
+import { WorkflowState } from './store/workflow.state';
 
 @Injectable()
 export class EventService {
@@ -391,6 +387,15 @@ export class EventService {
                             projectKey: event.project_key, workflowName: event.workflow_name,
                             num: event.workflow_run_num
                         }));
+                        if (this.routeParams['nodeId']) {
+                            this._store.dispatch(
+                                new GetWorkflowNodeRun({
+                                    projectKey: event.project_key,
+                                    workflowName: event.workflow_name,
+                                    num: event.workflow_run_num,
+                                    nodeRunID: this.routeParams['nodeId']
+                                }));
+                        }
                 }
                 break;
         }

@@ -56,7 +56,7 @@ func Test_postWorkerModelAsAdmin(t *testing.T) {
 	api, _, _, end := newTestAPI(t, bootstrap.InitiliazeDB)
 	defer end()
 
-	_, jwtRaw := assets.InsertAdminUser(api.mustDB())
+	_, jwtRaw := assets.InsertAdminUser(t, api.mustDB())
 
 	groupShared, err := group.LoadByName(context.TODO(), api.mustDB(), sdk.SharedInfraGroupName)
 	require.NoError(t, err)
@@ -109,7 +109,7 @@ func Test_addWorkerModelWithPrivateRegistryAsAdmin(t *testing.T) {
 	}
 
 	//Create admin user
-	u, jwt := assets.InsertAdminUser(api.mustDB())
+	u, jwt := assets.InsertAdminUser(t, api.mustDB())
 	assert.NotZero(t, u)
 	assert.NotZero(t, jwt)
 
@@ -167,7 +167,7 @@ func Test_WorkerModelUsage(t *testing.T) {
 	api, db, router, end := newTestAPI(t, bootstrap.InitiliazeDB)
 	defer end()
 
-	u, jwt := assets.InsertAdminUser(db)
+	u, jwt := assets.InsertAdminUser(t, db)
 	assert.NotZero(t, u)
 
 	grName := sdk.RandomString(10)
@@ -190,8 +190,12 @@ func Test_WorkerModelUsage(t *testing.T) {
 	test.NoError(t, workermodel.Insert(db, &model))
 
 	pkey := sdk.RandomString(10)
-	proj := assets.InsertTestProject(t, db, api.Cache, pkey, pkey, u)
-	test.NoError(t, group.InsertUserInGroup(db, proj.ProjectGroups[0].Group.ID, u.OldUserStruct.ID, true))
+	proj := assets.InsertTestProject(t, db, api.Cache, pkey, pkey)
+	require.NoError(t, group.InsertLinkGroupUser(db, &group.LinkGroupUser{
+		GroupID: proj.ProjectGroups[0].Group.ID,
+		UserID:  u.OldUserStruct.ID,
+		Admin:   true,
+	}))
 
 	pip := sdk.Pipeline{
 		ProjectID:  proj.ID,
@@ -287,7 +291,7 @@ func Test_postWorkerModelWithWrongRequest(t *testing.T) {
 	defer end()
 
 	//Create admin user
-	u, jwt := assets.InsertAdminUser(api.mustDB())
+	u, jwt := assets.InsertAdminUser(t, api.mustDB())
 	assert.NotZero(t, u)
 	assert.NotZero(t, jwt)
 
@@ -399,7 +403,7 @@ func Test_postWorkerModelAsAGroupMember(t *testing.T) {
 	}
 
 	//Create user
-	u, jwt := assets.InsertLambdaUser(api.mustDB(), g)
+	u, jwt := assets.InsertLambdaUser(t, api.mustDB(), g)
 	assert.NotZero(t, u)
 	assert.NotZero(t, jwt)
 
@@ -440,10 +444,8 @@ func Test_postWorkerModelAsAGroupAdmin(t *testing.T) {
 	}
 
 	//Create user
-	u, jwt := assets.InsertLambdaUser(api.mustDB(), g)
-	assert.NotZero(t, u)
-	assert.NotZero(t, jwt)
-	test.NoError(t, group.SetUserGroupAdmin(api.mustDB(), g.ID, u.OldUserStruct.ID))
+	u, jwt := assets.InsertLambdaUser(t, api.mustDB(), g)
+	assets.SetUserGroupAdmin(t, api.mustDB(), g.ID, u.OldUserStruct.ID)
 
 	model := sdk.Model{
 		Name:    "Test1",
@@ -482,8 +484,8 @@ func Test_postWorkerModelAsAGroupAdminWithRestrict(t *testing.T) {
 	}
 
 	//Create user
-	u, jwt := assets.InsertLambdaUser(api.mustDB(), g)
-	test.NoError(t, group.SetUserGroupAdmin(api.mustDB(), g.ID, u.OldUserStruct.ID))
+	u, jwt := assets.InsertLambdaUser(t, api.mustDB(), g)
+	assets.SetUserGroupAdmin(t, api.mustDB(), g.ID, u.OldUserStruct.ID)
 
 	model := sdk.Model{
 		Name:       "Test1",
@@ -526,10 +528,10 @@ func Test_postWorkerModelAsAGroupAdminWithoutRestrictWithPattern(t *testing.T) {
 	}
 
 	//Create user
-	u, jwt := assets.InsertLambdaUser(api.mustDB(), g)
+	u, jwt := assets.InsertLambdaUser(t, api.mustDB(), g)
 	assert.NotZero(t, u)
 	assert.NotZero(t, jwt)
-	test.NoError(t, group.SetUserGroupAdmin(api.mustDB(), g.ID, u.OldUserStruct.ID))
+	assets.SetUserGroupAdmin(t, api.mustDB(), g.ID, u.OldUserStruct.ID)
 
 	pattern := sdk.ModelPattern{
 		Name: "test",
@@ -584,10 +586,8 @@ func Test_postWorkerModelAsAGroupAdminWithProvision(t *testing.T) {
 	g := &sdk.Group{Name: sdk.RandomString(10)}
 
 	//Create user
-	u, jwt := assets.InsertLambdaUser(api.mustDB(), g)
-	assert.NotZero(t, u)
-	assert.NotZero(t, jwt)
-	test.NoError(t, group.SetUserGroupAdmin(api.mustDB(), g.ID, u.OldUserStruct.ID))
+	u, jwt := assets.InsertLambdaUser(t, api.mustDB(), g)
+	assets.SetUserGroupAdmin(t, api.mustDB(), g.ID, u.OldUserStruct.ID)
 
 	model := sdk.Model{
 		Name:       "Test-with-provision",
@@ -669,15 +669,11 @@ func Test_postWorkerModelAsAWrongGroupMember(t *testing.T) {
 		Name: sdk.RandomString(10),
 	}
 
-	if err := group.InsertGroup(api.mustDB(), g1); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, group.Insert(api.mustDB(), g1))
 
 	//Create user
-	u, jwt := assets.InsertLambdaUser(api.mustDB(), g)
-	assert.NotZero(t, u)
-	assert.NotZero(t, jwt)
-	test.NoError(t, group.SetUserGroupAdmin(api.mustDB(), g.ID, u.OldUserStruct.ID))
+	u, jwt := assets.InsertLambdaUser(t, api.mustDB(), g)
+	assets.SetUserGroupAdmin(t, api.mustDB(), g.ID, u.OldUserStruct.ID)
 
 	model := sdk.Model{
 		Name:    "Test1",
@@ -716,10 +712,8 @@ func Test_putWorkerModel(t *testing.T) {
 	}
 
 	//Create user
-	u, jwt := assets.InsertLambdaUser(api.mustDB(), g)
-	assert.NotZero(t, u)
-	assert.NotZero(t, jwt)
-	test.NoError(t, group.SetUserGroupAdmin(api.mustDB(), g.ID, u.OldUserStruct.ID))
+	u, jwt := assets.InsertLambdaUser(t, api.mustDB(), g)
+	assets.SetUserGroupAdmin(t, api.mustDB(), g.ID, u.OldUserStruct.ID)
 
 	model := sdk.Model{
 		Name:       "Test1",
@@ -791,10 +785,8 @@ func Test_putWorkerModelWithPassword(t *testing.T) {
 	}
 
 	//Create user
-	u, jwt := assets.InsertLambdaUser(api.mustDB(), g)
-	assert.NotZero(t, u)
-	assert.NotZero(t, jwt)
-	test.NoError(t, group.SetUserGroupAdmin(api.mustDB(), g.ID, u.OldUserStruct.ID))
+	u, jwt := assets.InsertLambdaUser(t, api.mustDB(), g)
+	assets.SetUserGroupAdmin(t, api.mustDB(), g.ID, u.OldUserStruct.ID)
 
 	model := sdk.Model{
 		Name:       "Test1",
@@ -900,11 +892,8 @@ func Test_deleteWorkerModel(t *testing.T) {
 	}
 
 	//Create user
-	u, jwt := assets.InsertLambdaUser(api.mustDB(), g)
-	assert.NotZero(t, u)
-	assert.NotZero(t, jwt)
-
-	test.NoError(t, group.SetUserGroupAdmin(api.mustDB(), g.ID, u.OldUserStruct.ID))
+	u, jwt := assets.InsertLambdaUser(t, api.mustDB(), g)
+	assets.SetUserGroupAdmin(t, api.mustDB(), g.ID, u.OldUserStruct.ID)
 
 	model := sdk.Model{
 		Name:       "Test1",
@@ -959,7 +948,7 @@ func Test_getWorkerModel(t *testing.T) {
 	defer end()
 
 	//Create admin user
-	u, jwt := assets.InsertAdminUser(api.mustDB())
+	u, jwt := assets.InsertAdminUser(t, api.mustDB())
 	assert.NotZero(t, u)
 	assert.NotZero(t, jwt)
 
@@ -1014,7 +1003,7 @@ func Test_getWorkerModels(t *testing.T) {
 	defer end()
 
 	//Create admin user
-	u, jwt := assets.InsertAdminUser(api.mustDB())
+	u, jwt := assets.InsertAdminUser(t, api.mustDB())
 	assert.NotZero(t, u)
 	assert.NotZero(t, jwt)
 
@@ -1085,7 +1074,7 @@ func Test_renameWorkerModel(t *testing.T) {
 	g2 := assets.InsertTestGroup(t, db, sdk.RandomString(10))
 
 	// create admin user
-	u, jwt := assets.InsertAdminUser(api.mustDB())
+	u, jwt := assets.InsertAdminUser(t, api.mustDB())
 	assert.NotZero(t, u)
 	assert.NotZero(t, jwt)
 

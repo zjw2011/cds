@@ -6,18 +6,19 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/spf13/afero"
+	"github.com/stretchr/testify/assert"
 	"gopkg.in/h2non/gock.v1"
 
 	"github.com/ovh/cds/engine/worker/internal"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/cdsclient"
 	"github.com/ovh/cds/sdk/log"
-	"github.com/stretchr/testify/assert"
 )
 
 func init() {
@@ -37,12 +38,13 @@ func TestStartWorkerWithABookedJob(t *testing.T) {
 			},
 		})
 
+	modelID := int64(1)
 	gock.New("http://lolcat.host").Post("/auth/consumer/worker/signin").
 		HeaderPresent("Authorization").
 		Reply(201).
 		JSON(sdk.Worker{
 			ID:      "xxxx-xxxx-xxxxx",
-			ModelID: 1,
+			ModelID: &modelID,
 		}).AddHeader("X-CDS-JWT", "eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJJRCI6IjJiNTA3ZDZiLTlhZWYtNGNlNS04MzhlLTA1OTU5NjhjMGU5NSIsIkdyb3VwSURzIjpbMV0sIlNjb3BlcyI6WyJXb3JrZXIiLCJSdW5FeGVjdXRpb24iXSwiZXhwIjoxNTYwNTA5NTQyLCJqdGkiOiIyYjUwN2Q2Yi05YWVmLTRjZTUtODM4ZS0wNTk1OTY4YzBlOTUiLCJpYXQiOjE1NjA1MDU5NDIsImlzcyI6ImNkc190ZXN0Iiwic3ViIjoiMTU4ODY5M2YtOTE5NC00ODg5LWJmYjAtZWY3Nzc5M2QzY2ViIn0.jLot6mtYHdnNAKxUS7OK7d6fVyMQyc7fS2NW4s727dxjx01Q2pPUQJBr16gKsS4ETSKh2ik7kqGGXdOz3i67DxMlPHcs0Azka1VOlefPcA77is-oVu0MPh4JbL0KA7fCu_98VKLJH3B0jYr4HEG9285ZOjFg7L5yuR7OqeFfCE3MrigyMKaNOrNE2FohOK9o50GyW_pAr6uNXcTu-yvqQUsz2B2gsd90HK2iWnvb8pKnBVVPg9Q0VA5l2IoFZR_p_UKSJZcFyFnjWKBVy33b70xupDnCpD-3OcbIFAQ5NPRvU_BnEjj_Jm59Ljrv3pJt1ErTMTkMA9QIFdYkDp5a6Q")
 
 	gock.New("http://lolcat.host").Get("/worker/model").
@@ -231,8 +233,12 @@ func TestStartWorkerWithABookedJob(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, int64(42), result.BuildID)
 				assert.Equal(t, sdk.StatusFail, result.Status)
-				assert.Equal(t, "cds.build.newvar", result.NewVariables[0].Name)
-				assert.Equal(t, "newval", result.NewVariables[0].Value)
+				if len(result.NewVariables) > 0 {
+					assert.Equal(t, "cds.build.newvar", result.NewVariables[0].Name)
+					assert.Equal(t, "newval", result.NewVariables[0].Value)
+				} else {
+					t.Error("missing new variables")
+				}
 			}
 		}
 	}
@@ -240,9 +246,15 @@ func TestStartWorkerWithABookedJob(t *testing.T) {
 	gock.Observe(checkRequest)
 
 	var w = new(internal.CurrentWorker)
-
 	fs := afero.NewOsFs()
-	if err := w.Init("test-worker", "test-hatchery", "http://lolcat.host", "xxx-my-token", 1, true, fs); err != nil {
+	basedir := "test-" + sdk.RandomString(10)
+	log.Debug("creating basedir %s", basedir)
+	if err := fs.MkdirAll(basedir, os.FileMode(0755)); err != nil {
+		log.Error("basedir error: %v", err)
+		os.Exit(5)
+	}
+
+	if err := w.Init("test-worker", "test-hatchery", "http://lolcat.host", "xxx-my-token", "", true, afero.NewBasePathFs(fs, basedir)); err != nil {
 		t.Fatalf("worker init failed: %v", err)
 	}
 	gock.InterceptClient(w.Client().(cdsclient.Raw).HTTPClient())

@@ -48,16 +48,18 @@ func (api *API) postRegisterWorkerHandler() service.Handler {
 		}
 
 		// Retrieve the authentifed Consumer from the hatchery
-		hatcheryConsumer, err := authentication.LoadConsumerByID(ctx, api.mustDB(), *hatchSrv.ConsumerID)
+		hatcheryConsumer, err := authentication.LoadConsumerByID(ctx, api.mustDB(), *hatchSrv.ConsumerID, authentication.LoadConsumerOptions.WithAuthentifiedUser)
 		if err != nil {
 			return sdk.WrapError(err, "registerWorkerHandler> Unable to load consumer %v", hatchSrv.ConsumerID)
 		}
+
+		hatchSrv.Maintainer = *hatcheryConsumer.AuthentifiedUser
 
 		tx, err := api.mustDB().Begin()
 		if err != nil {
 			return sdk.WithStack(err)
 		}
-		defer tx.Rollback()
+		defer tx.Rollback() // nolint
 
 		var groupIDs []int64
 		if workerTokenFromHatchery.Worker.JobID != 0 {
@@ -85,7 +87,7 @@ func (api *API) postRegisterWorkerHandler() service.Handler {
 
 		log.Debug("New worker: [%s] - %s", wk.ID, wk.Name)
 
-		workerSession, err := authentication.NewSession(tx, workerConsumer, workerauth.SessionDuration)
+		workerSession, err := authentication.NewSession(tx, workerConsumer, workerauth.SessionDuration, false)
 		if err != nil {
 			err = sdk.NewError(sdk.ErrUnauthorized, err)
 			return sdk.WrapError(err, "[%s] Registering failed", workerTokenFromHatchery.Worker.WorkerName)

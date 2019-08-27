@@ -79,6 +79,17 @@ func getSession(ctx context.Context, db gorp.SqlExecutor, q gorpmapping.Query, o
 	return &as, nil
 }
 
+// LoadExpiredSessions returns all expired session
+func LoadExpiredSessions(ctx context.Context, db gorp.SqlExecutor, opts ...LoadSessionOptionFunc) ([]sdk.AuthSession, error) {
+	query := gorpmapping.NewQuery(`
+		SELECT *
+		FROM auth_session
+		WHERE expire_at < $1
+		ORDER BY created ASC
+	`).Args(time.Now())
+	return getSessions(ctx, db, query, opts...)
+}
+
 // LoadSessionsByConsumerIDs returns all auth sessions from database for given consumer ids.
 func LoadSessionsByConsumerIDs(ctx context.Context, db gorp.SqlExecutor, consumerIDs []string, opts ...LoadSessionOptionFunc) ([]sdk.AuthSession, error) {
 	query := gorpmapping.NewQuery(`
@@ -111,7 +122,7 @@ func InsertSession(db gorp.SqlExecutor, as *sdk.AuthSession) error {
 // UpdateSession in database.
 func UpdateSession(db gorp.SqlExecutor, as *sdk.AuthSession) error {
 	s := authSession{AuthSession: *as}
-	if err := gorpmapping.UpdatetAndSign(db, &s); err != nil {
+	if err := gorpmapping.UpdateAndSign(db, &s); err != nil {
 		return sdk.WrapError(err, "unable to update auth session with id: %s", s.ID)
 	}
 	*as = s.AuthSession

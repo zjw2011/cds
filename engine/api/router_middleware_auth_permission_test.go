@@ -13,10 +13,12 @@ import (
 	"github.com/ovh/cds/engine/api/authentication/local"
 	"github.com/ovh/cds/engine/api/group"
 	"github.com/ovh/cds/engine/api/test/assets"
+	"github.com/ovh/cds/engine/api/user"
+	"github.com/ovh/cds/engine/api/workflowtemplate"
 	"github.com/ovh/cds/sdk"
 )
 
-func TestAPI_checkWorkflowPermissions(t *testing.T) {
+func Test_checkWorkflowPermissions(t *testing.T) {
 	api, _, _, end := newTestAPI(t)
 	defer end()
 
@@ -69,19 +71,23 @@ func TestAPI_checkWorkflowPermissions(t *testing.T) {
 	assert.Error(t, err, "should not be granted")
 }
 
-func TestAPI_checkProjectPermissions(t *testing.T) {
+func Test_checkProjectPermissions(t *testing.T) {
 	api, _, _, end := newTestAPI(t)
 	defer end()
 
 	g := assets.InsertGroup(t, api.mustDB())
-	authUser, _ := assets.InsertLambdaUser(api.mustDB(), g)
+	authUser, _ := assets.InsertLambdaUser(t, api.mustDB(), g)
 
-	p := assets.InsertTestProject(t, api.mustDB(), api.Cache, sdk.RandomString(10), sdk.RandomString(10), authUser)
+	p := assets.InsertTestProject(t, api.mustDB(), api.Cache, sdk.RandomString(10), sdk.RandomString(10))
 
-	require.NoError(t, group.InsertUserInGroup(api.mustDB(), p.ProjectGroups[0].Group.ID, authUser.OldUserStruct.ID, false))
+	require.NoError(t, group.InsertLinkGroupUser(api.mustDB(), &group.LinkGroupUser{
+		GroupID: p.ProjectGroups[0].Group.ID,
+		UserID:  authUser.OldUserStruct.ID,
+		Admin:   false,
+	}))
 
 	// Reload the groups for the user
-	groups, err := group.LoadGroupByUser(api.mustDB(), authUser.OldUserStruct.ID)
+	groups, err := group.LoadAllByDeprecatedUserID(context.TODO(), api.mustDB(), authUser.OldUserStruct.ID)
 	require.NoError(t, err)
 	authUser.OldUserStruct.Groups = groups
 
@@ -118,57 +124,179 @@ func TestAPI_checkProjectPermissions(t *testing.T) {
 	assert.Error(t, err, "should not be granted")
 }
 
-func TestAPI_checkUserPermissions(t *testing.T) {
+func Test_checkUserPermissions(t *testing.T) {
 	api, db, _, end := newTestAPI(t)
 	defer end()
 
-	authUser, _ := assets.InsertLambdaUser(db)
-	authUserAdmin, _ := assets.InsertAdminUser(db)
+	authUser, _ := assets.InsertLambdaUser(t, db)
+	authUserMaintainer, _ := assets.InsertMaintainerUser(t, db)
+	authUserAdmin, _ := assets.InsertAdminUser(t, db)
 
-	ctx := context.WithValue(context.TODO(), contextAPIConsumer, &sdk.AuthConsumer{
-		AuthentifiedUserID: authUser.ID,
-		AuthentifiedUser:   authUser,
-	})
-	err := api.checkUserPermissions(ctx, authUser.Username, sdk.PermissionReadWriteExecute, nil)
-	assert.NoError(t, err, "should be granted")
+	cases := []struct {
+		Name                     string
+		ConsumerAuthentifiedUser *sdk.AuthentifiedUser
+		TargetAuthentifiedUser   *sdk.AuthentifiedUser
+		Permission               int
+		Granted                  bool
+	}{
+		{
+			Name:                     "RW on himself",
+			ConsumerAuthentifiedUser: authUser,
+			TargetAuthentifiedUser:   authUser,
+			Permission:               sdk.PermissionReadWriteExecute,
+			Granted:                  true,
+		},
+		{
+			Name:                     "R on other by lambda user",
+			ConsumerAuthentifiedUser: authUser,
+			TargetAuthentifiedUser:   authUserAdmin,
+			Permission:               sdk.PermissionRead,
+			Granted:                  false,
+		},
+		{
+			Name:                     "R on other by admin user",
+			ConsumerAuthentifiedUser: authUserAdmin,
+			TargetAuthentifiedUser:   authUser,
+			Permission:               sdk.PermissionRead,
+			Granted:                  true,
+		},
+		{
+			Name:                     "R on other by maintainer user",
+			ConsumerAuthentifiedUser: authUserMaintainer,
+			TargetAuthentifiedUser:   authUser,
+			Permission:               sdk.PermissionRead,
+			Granted:                  true,
+		},
+		{
+			Name:                     "RW on other by lambda user",
+			ConsumerAuthentifiedUser: authUser,
+			TargetAuthentifiedUser:   authUserAdmin,
+			Permission:               sdk.PermissionReadWriteExecute,
+			Granted:                  false,
+		},
+		{
+			Name:                     "RW on other by maintainer user",
+			ConsumerAuthentifiedUser: authUserMaintainer,
+			TargetAuthentifiedUser:   authUser,
+			Permission:               sdk.PermissionReadWriteExecute,
+			Granted:                  false,
+		},
+		{
+			Name:                     "RW on other by admin user",
+			ConsumerAuthentifiedUser: authUserAdmin,
+			TargetAuthentifiedUser:   authUser,
+			Permission:               sdk.PermissionReadWriteExecute,
+			Granted:                  true,
+		},
+	}
 
-	ctx = context.WithValue(context.TODO(), contextAPIConsumer, &sdk.AuthConsumer{
-		AuthentifiedUser: authUser,
-	})
-	err = api.checkUserPermissions(ctx, authUserAdmin.Username, sdk.PermissionRead, nil)
-	assert.Error(t, err, "should not be granted")
-
-	ctx = context.WithValue(context.TODO(), contextAPIConsumer, &sdk.AuthConsumer{
-		AuthentifiedUserID: authUserAdmin.ID,
-		AuthentifiedUser:   authUserAdmin,
-	})
-	err = api.checkUserPermissions(ctx, authUser.Username, sdk.PermissionRead, nil)
-	assert.NoError(t, err, "should be granted")
-
-	ctx = context.WithValue(context.TODO(), contextAPIConsumer, &sdk.AuthConsumer{
-		AuthentifiedUserID: authUserAdmin.ID,
-		AuthentifiedUser:   authUserAdmin,
-	})
-	err = api.checkUserPermissions(ctx, authUser.Username, sdk.PermissionReadWriteExecute, nil)
-	assert.Error(t, err, "should not be granted")
-
-	ctx = context.WithValue(context.TODO(), contextAPIConsumer, &sdk.AuthConsumer{
-		AuthentifiedUserID: authUserAdmin.ID,
-		AuthentifiedUser:   authUserAdmin,
-	})
-	err = api.checkUserPermissions(ctx, authUserAdmin.Username, sdk.PermissionReadWriteExecute, nil)
-	assert.NoError(t, err, "should be granted")
+	for _, c := range cases {
+		t.Run(c.Name, func(t *testing.T) {
+			ctx := context.WithValue(context.TODO(), contextAPIConsumer, &sdk.AuthConsumer{
+				AuthentifiedUserID: c.ConsumerAuthentifiedUser.ID,
+				AuthentifiedUser:   c.ConsumerAuthentifiedUser,
+			})
+			err := api.checkUserPermissions(ctx, c.TargetAuthentifiedUser.Username, c.Permission, nil)
+			if c.Granted {
+				assert.NoError(t, err, "should be granted")
+			} else {
+				assert.Error(t, err, "should not be granted")
+			}
+		})
+	}
 }
 
-func TestAPI_checkConsumerPermissions(t *testing.T) {
+func Test_checkUserPublicPermissions(t *testing.T) {
 	api, db, _, end := newTestAPI(t)
 	defer end()
 
-	authUser, _ := assets.InsertLambdaUser(db)
+	authUser, _ := assets.InsertLambdaUser(t, db)
+	authUserMaintainer, _ := assets.InsertMaintainerUser(t, db)
+	authUserAdmin, _ := assets.InsertAdminUser(t, db)
+
+	cases := []struct {
+		Name                     string
+		ConsumerAuthentifiedUser *sdk.AuthentifiedUser
+		TargetAuthentifiedUser   *sdk.AuthentifiedUser
+		Permission               int
+		Granted                  bool
+	}{
+		{
+			Name:                     "RW on himself",
+			ConsumerAuthentifiedUser: authUser,
+			TargetAuthentifiedUser:   authUser,
+			Permission:               sdk.PermissionReadWriteExecute,
+			Granted:                  true,
+		},
+		{
+			Name:                     "R on other by lambda user",
+			ConsumerAuthentifiedUser: authUser,
+			TargetAuthentifiedUser:   authUserAdmin,
+			Permission:               sdk.PermissionRead,
+			Granted:                  true,
+		},
+		{
+			Name:                     "R on other by admin user",
+			ConsumerAuthentifiedUser: authUserAdmin,
+			TargetAuthentifiedUser:   authUser,
+			Permission:               sdk.PermissionRead,
+			Granted:                  true,
+		},
+		{
+			Name:                     "R on other by maintainer user",
+			ConsumerAuthentifiedUser: authUserMaintainer,
+			TargetAuthentifiedUser:   authUser,
+			Permission:               sdk.PermissionRead,
+			Granted:                  true,
+		},
+		{
+			Name:                     "RW on other by lambda user",
+			ConsumerAuthentifiedUser: authUser,
+			TargetAuthentifiedUser:   authUserAdmin,
+			Permission:               sdk.PermissionReadWriteExecute,
+			Granted:                  false,
+		},
+		{
+			Name:                     "RW on other by maintainer user",
+			ConsumerAuthentifiedUser: authUserMaintainer,
+			TargetAuthentifiedUser:   authUser,
+			Permission:               sdk.PermissionReadWriteExecute,
+			Granted:                  false,
+		},
+		{
+			Name:                     "RW on other by admin user",
+			ConsumerAuthentifiedUser: authUserAdmin,
+			TargetAuthentifiedUser:   authUser,
+			Permission:               sdk.PermissionReadWriteExecute,
+			Granted:                  true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.Name, func(t *testing.T) {
+			ctx := context.WithValue(context.TODO(), contextAPIConsumer, &sdk.AuthConsumer{
+				AuthentifiedUserID: c.ConsumerAuthentifiedUser.ID,
+				AuthentifiedUser:   c.ConsumerAuthentifiedUser,
+			})
+			err := api.checkUserPublicPermissions(ctx, c.TargetAuthentifiedUser.Username, c.Permission, nil)
+			if c.Granted {
+				assert.NoError(t, err, "should be granted")
+			} else {
+				assert.Error(t, err, "should not be granted")
+			}
+		})
+	}
+}
+
+func Test_checkConsumerPermissions(t *testing.T) {
+	api, db, _, end := newTestAPI(t)
+	defer end()
+
+	authUser, _ := assets.InsertLambdaUser(t, db)
 	localConsumer, err := authentication.LoadConsumerByTypeAndUserID(context.TODO(), db, sdk.ConsumerLocal, authUser.ID)
 	require.NoError(t, err)
 
-	authUserAdmin, _ := assets.InsertAdminUser(db)
+	authUserAdmin, _ := assets.InsertAdminUser(t, db)
 	localConsumerAdmin, err := authentication.LoadConsumerByTypeAndUserID(context.TODO(), db, sdk.ConsumerLocal, authUserAdmin.ID)
 	require.NoError(t, err)
 
@@ -185,20 +313,20 @@ func TestAPI_checkConsumerPermissions(t *testing.T) {
 	assert.Error(t, err, "should not be granted")
 }
 
-func TestAPI_checkSessionPermissions(t *testing.T) {
+func Test_checkSessionPermissions(t *testing.T) {
 	api, db, _, end := newTestAPI(t)
 	defer end()
 
-	authUser, _ := assets.InsertLambdaUser(db)
+	authUser, _ := assets.InsertLambdaUser(t, db)
 	localConsumer, err := authentication.LoadConsumerByTypeAndUserID(context.TODO(), db, sdk.ConsumerLocal, authUser.ID)
 	require.NoError(t, err)
-	localSession, err := authentication.NewSession(db, localConsumer, time.Second)
+	localSession, err := authentication.NewSession(db, localConsumer, time.Second, false)
 	require.NoError(t, err)
 
-	authUserAdmin, _ := assets.InsertAdminUser(db)
+	authUserAdmin, _ := assets.InsertAdminUser(t, db)
 	localConsumerAdmin, err := authentication.LoadConsumerByTypeAndUserID(context.TODO(), db, sdk.ConsumerLocal, authUserAdmin.ID)
 	require.NoError(t, err)
-	localSessionAdmin, err := authentication.NewSession(db, localConsumerAdmin, time.Second)
+	localSessionAdmin, err := authentication.NewSession(db, localConsumerAdmin, time.Second, false)
 	require.NoError(t, err)
 
 	ctx := context.WithValue(context.TODO(), contextAPIConsumer, localConsumer)
@@ -307,10 +435,10 @@ func Test_checkWorkerModelPermissionsByUser(t *testing.T) {
 					Groups: []sdk.Group{
 						{
 							ID: 1,
-							Members: []sdk.User{
+							Members: []sdk.GroupMember{
 								{
-									ID:         1,
-									GroupAdmin: true,
+									ID:    sdk.RandomString(10),
+									Admin: true,
 								},
 							},
 						},
@@ -484,26 +612,30 @@ func Test_checkWorkflowPermissionsByUser(t *testing.T) {
 		}
 		var usr *sdk.AuthentifiedUser
 		if tt.setup.UserAdmin {
-			usr, _ = assets.InsertAdminUser(api.mustDB())
+			usr, _ = assets.InsertAdminUser(t, api.mustDB())
 		} else {
-			usr, _ = assets.InsertLambdaUser(api.mustDB(), groups...)
+			usr, _ = assets.InsertLambdaUser(t, api.mustDB(), groups...)
 		}
 
-		proj := assets.InsertTestProject(t, api.mustDB(), api.Cache, tt.args.pKey, tt.args.pKey, nil)
+		proj := assets.InsertTestProject(t, api.mustDB(), api.Cache, tt.args.pKey, tt.args.pKey)
 		wrkflw := assets.InsertTestWorkflow(t, api.mustDB(), api.Cache, proj, tt.args.wName)
 
 		for groupName, permLevel := range tt.setup.ProjGroupPermissions {
 			g, err := group.LoadByName(context.TODO(), api.mustDB(), groupName+suffix, group.LoadOptions.WithMembers)
 			require.NoError(t, err)
 
-			require.NoError(t, group.InsertGroupInProject(api.mustDB(), proj.ID, g.ID, permLevel))
+			require.NoError(t, group.InsertLinkGroupProject(api.mustDB(), &group.LinkGroupProject{
+				GroupID:   g.ID,
+				ProjectID: proj.ID,
+				Role:      permLevel,
+			}))
 		}
 
 		for groupName, permLevel := range tt.setup.WorkflowGroupPermissions {
 			g, err := group.LoadByName(context.TODO(), api.mustDB(), groupName+suffix, group.LoadOptions.WithMembers)
 			require.NoError(t, err)
 
-			require.NoError(t, group.AddWorkflowGroup(api.mustDB(), wrkflw, sdk.GroupPermission{
+			require.NoError(t, group.AddWorkflowGroup(context.TODO(), api.mustDB(), wrkflw, sdk.GroupPermission{
 				Group:      *g,
 				Permission: permLevel,
 			}))
@@ -525,5 +657,355 @@ func Test_checkWorkflowPermissionsByUser(t *testing.T) {
 }
 
 func Test_checkJobIDPermissions(t *testing.T) {
+	// TODO
+}
+
+func Test_checkGroupPermissions(t *testing.T) {
+	api, _, _, end := newTestAPI(t)
+	defer end()
+
+	type setup struct {
+		currentUser           string
+		currenUserIsAdmin     bool
+		currenUserIsMaitainer bool
+		groupAdmins           []string
+		groupMembers          []string
+	}
+	type args struct {
+		groupName       string
+		permissionLevel int
+	}
+	tests := []struct {
+		name    string
+		setup   setup
+		args    args
+		wantErr bool
+	}{
+		{
+			name:    "invalid group name",
+			wantErr: true,
+		},
+		{
+			name:    "group does not exist",
+			wantErr: true,
+		},
+		{
+			name:    "admin can get group",
+			wantErr: false,
+			setup: setup{
+				currentUser:       "admin",
+				currenUserIsAdmin: true,
+			},
+			args: args{
+				groupName:       "my_group",
+				permissionLevel: sdk.PermissionRead,
+			},
+		},
+		{
+			name:    "maintainer can get group",
+			wantErr: false,
+			setup: setup{
+				currentUser:           "maintainer",
+				currenUserIsMaitainer: true,
+			},
+			args: args{
+				groupName:       "my_group",
+				permissionLevel: sdk.PermissionRead,
+			},
+		},
+		{
+			name:    "admin can update group",
+			wantErr: false,
+			setup: setup{
+				currentUser:       "admin",
+				currenUserIsAdmin: true,
+			},
+			args: args{
+				groupName:       "my_group",
+				permissionLevel: sdk.PermissionReadWriteExecute,
+			},
+		},
+		{
+			name:    "maintainer can't update group",
+			wantErr: true,
+			setup: setup{
+				currentUser:           "maintainer",
+				currenUserIsMaitainer: true,
+			},
+			args: args{
+				groupName:       "my_group",
+				permissionLevel: sdk.PermissionReadWriteExecute,
+			},
+		},
+		{
+			name:    "group admin can read group",
+			wantErr: false,
+			setup: setup{
+				currentUser: "group_admin",
+				groupAdmins: []string{"group_admin"},
+			},
+			args: args{
+				groupName:       "my_group",
+				permissionLevel: sdk.PermissionRead,
+			},
+		},
+		{
+			name:    "group member can read group",
+			wantErr: false,
+			setup: setup{
+				currentUser:  "group_member",
+				groupMembers: []string{"group_member"},
+			},
+			args: args{
+				groupName:       "my_group",
+				permissionLevel: sdk.PermissionRead,
+			},
+		},
+		{
+			name:    "group admin can update group",
+			wantErr: false,
+			setup: setup{
+				currentUser: "group_admin",
+				groupAdmins: []string{"group_admin"},
+			},
+			args: args{
+				groupName:       "my_group",
+				permissionLevel: sdk.PermissionReadWriteExecute,
+			},
+		},
+		{
+			name:    "group member can't update group",
+			wantErr: true,
+			setup: setup{
+				currentUser:  "group_member",
+				groupMembers: []string{"group_member"},
+			},
+			args: args{
+				groupName:       "my_group",
+				permissionLevel: sdk.PermissionReadWriteExecute,
+			},
+		},
+		{
+			name:    "lambda user can't get group",
+			wantErr: true,
+			setup: setup{
+				currentUser: "user",
+			},
+			args: args{
+				groupName:       "my_group",
+				permissionLevel: sdk.PermissionRead,
+			},
+		},
+		{
+			name:    "lambda user can't update group",
+			wantErr: true,
+			setup: setup{
+				currentUser: "user",
+			},
+			args: args{
+				groupName:       "my_group",
+				permissionLevel: sdk.PermissionReadWriteExecute,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prefix := sdk.RandomString(10) + "."
+			currentUser := sdk.AuthentifiedUser{
+				Username: prefix + tt.setup.currentUser,
+			}
+			if tt.setup.currenUserIsAdmin {
+				currentUser.Ring = sdk.UserRingAdmin
+			} else if tt.setup.currenUserIsMaitainer {
+				currentUser.Ring = sdk.UserRingMaintainer
+			} else {
+				currentUser.Ring = sdk.UserRingUser
+			}
+
+			require.NoError(t, user.Insert(api.mustDB(), &currentUser))
+
+			groupAdmin := &sdk.AuthentifiedUser{
+				Username: prefix + "auto-group-admin",
+			}
+			require.NoError(t, user.Insert(api.mustDB(), groupAdmin))
+
+			var err error
+			groupAdmin, err = user.LoadByID(context.TODO(), api.mustDB(), groupAdmin.ID, user.LoadOptions.WithDeprecatedUser)
+			require.NoError(t, err)
+
+			tt.args.groupName = prefix + tt.args.groupName
+
+			g := sdk.Group{
+				Name: tt.args.groupName,
+			}
+
+			require.NoError(t, group.Create(api.mustDB(), &g, groupAdmin.OldUserStruct.ID))
+
+			for _, adm := range tt.setup.groupAdmins {
+				adm = prefix + adm
+				uAdm, _ := user.LoadByUsername(context.TODO(), api.mustDB(), adm)
+				if uAdm == nil {
+					uAdm = &sdk.AuthentifiedUser{
+						Username: adm,
+						Ring:     sdk.UserRingUser,
+					}
+					require.NoError(t, user.Insert(api.mustDB(), uAdm))
+					defer assert.NoError(t, user.DeleteByID(api.mustDB(), uAdm.ID))
+
+				}
+				uAdm, _ = user.LoadByID(context.TODO(), api.mustDB(), uAdm.ID, user.LoadOptions.WithDeprecatedUser)
+
+				require.NoError(t, group.InsertLinkGroupUser(api.mustDB(), &group.LinkGroupUser{
+					Admin:   true,
+					GroupID: g.ID,
+					UserID:  uAdm.OldUserStruct.ID,
+				}))
+			}
+
+			for _, member := range tt.setup.groupMembers {
+				member = prefix + member
+				uMember, _ := user.LoadByUsername(context.TODO(), api.mustDB(), member)
+				if uMember == nil {
+					uMember = &sdk.AuthentifiedUser{
+						Username: member,
+						Ring:     sdk.UserRingUser,
+					}
+					require.NoError(t, user.Insert(api.mustDB(), uMember))
+					defer assert.NoError(t, user.DeleteByID(api.mustDB(), uMember.ID))
+
+				}
+				uMember, _ = user.LoadByID(context.TODO(), api.mustDB(), uMember.ID, user.LoadOptions.WithDeprecatedUser)
+
+				require.NoError(t, group.InsertLinkGroupUser(api.mustDB(), &group.LinkGroupUser{
+					Admin:   false,
+					GroupID: g.ID,
+					UserID:  uMember.OldUserStruct.ID,
+				}))
+			}
+
+			consumer, err := local.NewConsumer(api.mustDB(), currentUser.ID)
+			require.NoError(t, err)
+			consumer, err = authentication.LoadConsumerByID(context.TODO(), api.mustDB(), consumer.ID, authentication.LoadConsumerOptions.WithAuthentifiedUser)
+			require.NoError(t, err)
+
+			ctx := context.TODO()
+			ctx = context.WithValue(ctx, contextAPIConsumer, consumer)
+
+			err = api.checkGroupPermissions(ctx, tt.args.groupName, tt.args.permissionLevel, nil)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func Test_checkTemplateSlugPermissions(t *testing.T) {
+	api, _, _, end := newTestAPI(t)
+	defer end()
+
+	type setup struct {
+		groupName    string
+		templateSlug string
+	}
+	type args struct {
+		groupName    string
+		templateSlug string
+	}
+	tests := []struct {
+		name    string
+		setup   setup
+		args    args
+		wantErr bool
+	}{
+		{
+			name:    "invalid workflow template",
+			wantErr: true,
+		},
+		{
+			name:    "wrong group",
+			wantErr: true,
+			setup: setup{
+				groupName:    "group",
+				templateSlug: "template",
+			},
+			args: args{
+				groupName:    "wronggroup",
+				templateSlug: "template",
+			},
+		},
+		{
+			name:    "wrong template",
+			wantErr: true,
+			setup: setup{
+				groupName:    "group",
+				templateSlug: "template",
+			},
+			args: args{
+				groupName:    "group",
+				templateSlug: "wrongtemplate",
+			},
+		},
+		{
+			name:    "rignt group and template",
+			wantErr: false,
+			setup: setup{
+				groupName:    "group",
+				templateSlug: "template",
+			},
+			args: args{
+				groupName:    "group",
+				templateSlug: "template",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prefix := sdk.RandomString(10) + "."
+
+			if tt.setup.groupName != "" {
+				groupAdmin := &sdk.AuthentifiedUser{
+					Username: prefix + "auto-group-admin",
+				}
+				require.NoError(t, user.Insert(api.mustDB(), groupAdmin))
+
+				var err error
+				groupAdmin, err = user.LoadByID(context.TODO(), api.mustDB(), groupAdmin.ID, user.LoadOptions.WithDeprecatedUser)
+				require.NoError(t, err)
+				tt.setup.groupName = prefix + tt.setup.groupName
+				g := sdk.Group{
+					Name: tt.setup.groupName,
+				}
+				require.NoError(t, group.Create(api.mustDB(), &g, groupAdmin.OldUserStruct.ID))
+				t.Logf("group %s created", g.Name)
+
+				if tt.setup.templateSlug != "" {
+					tt.setup.templateSlug = prefix + tt.setup.templateSlug
+
+					template := sdk.WorkflowTemplate{
+						GroupID: g.ID,
+						Name:    tt.setup.templateSlug,
+						Slug:    tt.setup.templateSlug,
+					}
+					require.NoError(t, workflowtemplate.Insert(api.mustDB(), &template))
+					t.Logf("template %s created", template.Name)
+				}
+			}
+
+			ctx := context.TODO()
+			err := api.checkTemplateSlugPermissions(ctx, prefix+tt.args.templateSlug, sdk.PermissionRead, map[string]string{"permGroupName": prefix + tt.args.groupName})
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func Test_checkActionPermissions(t *testing.T) {
 	// TODO
 }

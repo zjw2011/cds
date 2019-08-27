@@ -1,10 +1,10 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { AuthConsumer, AuthSession } from 'app/model/authentication.model';
+import { AuthConsumer, AuthConsumerCreateResponse, AuthSession } from 'app/model/authentication.model';
+import { Bookmark } from 'app/model/bookmark.model';
 import { Group } from 'app/model/group.model';
+import { AuthentifiedUser, UserContact } from 'app/model/user.model';
 import { Observable } from 'rxjs';
-import { Bookmark } from '../../model/bookmark.model';
-import { User, UserContact } from '../../model/user.model';
 
 @Injectable()
 export class UserService {
@@ -12,24 +12,50 @@ export class UserService {
         private _http: HttpClient
     ) { }
 
-    getMe(): Observable<User> {
-        return this._http.get<User>('/user/me');
+    getMe(): Observable<AuthentifiedUser> {
+        return this._http.get<AuthentifiedUser>('/user/me').map(u => {
+            return Object.assign(new AuthentifiedUser(), u);
+        });
     }
 
-    getUsers(): Observable<User[]> {
-        return this._http.get<User[]>('/user');
+    get(username: string): Observable<AuthentifiedUser> {
+        return this._http.get<AuthentifiedUser>(`/user/${username}`).map(u => {
+            return Object.assign(new AuthentifiedUser(), u);
+        });
+    }
+
+    update(username: string, user: AuthentifiedUser): Observable<AuthentifiedUser> {
+        return this._http.put<AuthentifiedUser>(`/user/${username}`, user).map(u => {
+            return Object.assign(new AuthentifiedUser(), u);
+        });
+    }
+
+    delete(username: string): Observable<Response> {
+        return this._http.delete<Response>(`/user/${username}`);
+    }
+
+    getUsers(): Observable<Array<AuthentifiedUser>> {
+        return this._http.get<Array<AuthentifiedUser>>('/user').map(us => {
+            return us.map(u => Object.assign(new AuthentifiedUser(), u));
+        });
     }
 
     getGroups(username: string): Observable<Array<Group>> {
-        return this._http.get<Array<Group>>('/user/' + username + '/groups');
+        return this._http.get<Array<Group>>(`/user/${username}/groups`).map(gs => {
+            return gs.map(g => Object.assign(new Group(), g));
+        });
     }
 
     getContacts(username: string): Observable<Array<UserContact>> {
-        return this._http.get<Array<UserContact>>('/user/' + username + '/contacts');
+        return this._http.get<Array<UserContact>>(`/user/${username}/contacts`);
     }
 
     getConsumers(username: string): Observable<Array<AuthConsumer>> {
         return this._http.get<Array<AuthConsumer>>(`/user/${username}/auth/consumer`);
+    }
+
+    createConsumer(username: string, consumer: AuthConsumer): Observable<AuthConsumerCreateResponse> {
+        return this._http.post<AuthConsumerCreateResponse>(`/user/${username}/auth/consumer`, consumer);
     }
 
     getSessions(username: string): Observable<Array<AuthSession>> {
@@ -38,18 +64,6 @@ export class UserService {
 
     deleteSession(username: string, sessionID: string): Observable<any> {
         return this._http.delete(`/user/${username}/auth/session/${sessionID}`);
-    }
-
-    getUser(username: string): Observable<User> {
-        return this._http.get<User>('/user/' + username);
-    }
-
-    updateUser(username: string, user: User): Observable<User> {
-        return this._http.put<User>('/user/' + username, user);
-    }
-
-    deleteUser(username: string): Observable<Response> {
-        return this._http.delete<Response>('/user/' + username);
     }
 
     getBookmarks(): Observable<Bookmark[]> {

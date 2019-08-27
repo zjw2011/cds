@@ -42,9 +42,9 @@ export class WorkflowWNodeComponent implements OnInit {
     @Input() workflow: Workflow;
     @Input() project: Project;
 
-    @ViewChild('menu', {static: false})
+    @ViewChild('menu', { static: false })
     menu: WorkflowWNodeMenuEditComponent;
-    @ViewChild('workflowRunNode', {static: false})
+    @ViewChild('workflowRunNode', { static: false })
     workflowRunNode: WorkflowNodeRunParamComponent;
 
     // Selected workflow run
@@ -59,13 +59,13 @@ export class WorkflowWNodeComponent implements OnInit {
     sub: Subscription;
 
     // Modal
-    @ViewChild('workflowDeleteNode', {static: false})
+    @ViewChild('workflowDeleteNode', { static: false })
     workflowDeleteNode: WorkflowDeleteNodeComponent;
-    @ViewChild('workflowTrigger', {static: false})
+    @ViewChild('workflowTrigger', { static: false })
     workflowTrigger: WorkflowTriggerComponent;
-    @ViewChild('workflowAddHook', {static: false})
+    @ViewChild('workflowAddHook', { static: false })
     workflowAddHook: WorkflowHookModalComponent;
-    @ViewChild('nodeEditModal', {static: false})
+    @ViewChild('nodeEditModal', { static: false })
     nodeEditModal: WorkflowNodeEditModalComponent;
 
     constructor(
@@ -153,7 +153,7 @@ export class WorkflowWNodeComponent implements OnInit {
                 this.openTriggerModal('pipeline', false);
                 break;
             case 'parent':
-                this.openTriggerModal('pipeline', false);
+                this.openTriggerModal('pipeline', true);
                 break;
             case 'edit':
                 this._store.dispatch(new OpenEditModal({

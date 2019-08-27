@@ -27,7 +27,6 @@ import (
 )
 
 const (
-	rangeMax     = 50
 	defaultLimit = 10
 )
 
@@ -720,7 +719,7 @@ func (api *API) stopWorkflowNodeRun(ctx context.Context, dbFunc func() *gorp.DbM
 	if errTx != nil {
 		return nil, sdk.WrapError(errTx, "unable to create transaction")
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() // nolint
 
 	stopInfos := sdk.SpawnInfo{
 		APITime:    time.Now(),
@@ -877,6 +876,7 @@ func (api *API) postWorkflowRunHandler() service.Handler {
 				Base64Keys:            true,
 				WithAsCodeUpdateEvent: true,
 				WithIcon:              true,
+				WithIntegrations:      true,
 			})
 			if errWf != nil {
 				return sdk.WrapError(errWf, "unable to load workflow %s", name)
@@ -938,6 +938,7 @@ func (api *API) initWorkflowRun(ctx context.Context, db *gorp.DbMap, cache cache
 
 		// IF AS CODE - REBUILD Workflow
 		if wf.FromRepository != "" {
+			log.Debug("initWorkflowRun> rebuild workflow %s/%s from as code configuration", p.Key, wf.Name)
 			p1, errp := project.Load(db, cache, p.Key,
 				project.LoadOptions.WithVariables,
 				project.LoadOptions.WithGroups,
@@ -1251,6 +1252,8 @@ func (api *API) getWorkflowNodeRunJobStepHandler() service.Handler {
 			return sdk.WrapError(errNR, "cannot find nodeRun %d/%d for workflow %s in project %s", nodeRunID, number, workflowName, projectKey)
 		}
 
+		log.Debug("nodeRun: %+v", nodeRun)
+
 		var stepStatus string
 		// Find job/step in nodeRun
 	stageLoop:
@@ -1288,6 +1291,8 @@ func (api *API) getWorkflowNodeRunJobStepHandler() service.Handler {
 			Status:   stepStatus,
 			StepLogs: *ls,
 		}
+
+		log.Debug("logs: %+v", result)
 
 		return service.WriteJSON(w, result, http.StatusOK)
 	}

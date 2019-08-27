@@ -81,6 +81,16 @@ func FormString(r *http.Request, s string) string {
 	return r.FormValue(s)
 }
 
+// QueryString return a string from a query parameter
+func QueryString(r *http.Request, s string) string {
+	return r.FormValue(s)
+}
+
+// QueryBool return a boolean from a query parameter
+func QueryBool(r *http.Request, s string) bool {
+	return FormBool(r, s)
+}
+
 // QueryStrings returns the list of values for given query param key or nil if key no values.
 func QueryStrings(r *http.Request, key string) ([]string, error) {
 	if err := r.ParseForm(); err != nil {
@@ -177,9 +187,9 @@ func requestVarInt(r *http.Request, s string) (int64, error) {
 	if err != nil {
 		err = sdk.WrapError(err, "%s is not an integer: %s", s, vars[s])
 		if s == "id" {
-			return 0, sdk.NewErrorWithStack(sdk.ErrInvalidID, err)
+			return 0, sdk.NewErrorWithStack(err, sdk.ErrInvalidID)
 		}
-		return 0, sdk.NewErrorWithStack(sdk.ErrWrongRequest, err)
+		return 0, sdk.NewErrorWithStack(err, sdk.ErrWrongRequest)
 	}
 
 	return id, nil

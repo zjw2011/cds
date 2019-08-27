@@ -1,7 +1,9 @@
 <div class="wrapper">
     <app-breadcrumb [path]="path"></app-breadcrumb>
     <div class="page-content">
-        <app-menu class="menu" [items]="items" (onSelect)="selectItem($event)"></app-menu>
+        <app-menu class="menu" [withRouting]="true" [orientation]="'VERTICAL'" [items]="menuItems"
+            (onSelect)="selectMenuItem($event)">
+        </app-menu>
         <app-scrollview class="scrollview" *ngIf="selectedItem" [ngSwitch]="selectedItem.key">
             <ng-container *ngSwitchCase="'profile'" class="ui grid">
                 <div *ngIf="user;then showUser;else loadUser"></div>
@@ -13,38 +15,30 @@
                                     <div class="field">
                                         <label>{{'user_label_username' | translate}}</label>
                                         <input class="ui input" type="text" name="username" [(ngModel)]="user.username"
-                                            [disabled]="loading">
+                                            [disabled]="loading" [readonly]="!editable">
                                     </div>
                                     <div class="field">
                                         <label>{{'user_label_fullname' | translate}}</label>
                                         <input class="ui input" type="text" name="fullname" [(ngModel)]="user.fullname"
-                                            [disabled]="loading">
+                                            [disabled]="loading" [readonly]="!editable">
                                     </div>
                                     <div class="field">
-                                        <label>{{'user_label_fullname' | translate}}</label>
-                                        <input class="ui input" type="text" name="fullname" [(ngModel)]="user.fullname"
-                                            [disabled]="loading">
+                                        <label for="admin">{{'user_label_ring' | translate}}</label>
+                                        <sm-select *ngIf="currentUser.isAdmin()" class="fluid search" name="admin"
+                                            [disabled]="loading" [(model)]="user.ring">
+                                            <option [value]="'USER'">USER</option>
+                                            <option [value]="'MAINTAINER'">MAINTAINER</option>
+                                            <option [value]="'ADMIN'">ADMIN</option>
+                                        </sm-select>
+                                        <input *ngIf="!currentUser.isAdmin()" class="ui input" type="text" name="admin"
+                                            [ngModel]="user.ring" [readonly]="true">
                                     </div>
-                                    <div class="field">
-                                        <label>{{'user_label_email' | translate}}</label>
-                                        <input class="ui input" type="text" name="email" [(ngModel)]="user.email"
-                                            [disabled]="loading">
-                                    </div>
-                                    <div class="field" *ngIf="currentUser.admin">
-                                        <div class="ui checkbox">
-                                            <input type="checkbox" id="admin" name="admin" [(ngModel)]="user.admin"
-                                                [disabled]="loading">
-                                            <label for="admin">{{'user_label_admin' | translate}}</label>
-                                        </div>
-                                    </div>
-                                    <div class="field inline">
-                                        <app-delete-button
-                                            *ngIf="user && user.id && currentUser.admin && user.username !== currentUser.username"
-                                            class="left floated" (event)="clickDeleteButton()"
+                                    <div class="field inline" *ngIf="editable">
+                                        <app-delete-button class="left floated" (event)="clickDelete()"
                                             [loading]="deleteLoading">
                                         </app-delete-button>
                                         <button class="ui green right floated button" [class.loading]="loading"
-                                            (click)="clickSaveButton()">
+                                            (click)="clickSave()">
                                             <i class="save icon"></i>{{ 'btn_save' | translate }}
                                         </button>
                                     </div>
@@ -78,34 +72,50 @@
                         </div>
                     </h2>
                     <div class="ui four stackable centered cards">
-                        <ng-container *ngFor="let d of drivers" [ngSwitch]="d.type">
-                            <div class="ui card" *ngSwitchCase="'local'">
-                                <div class="content">
+                        <div class="ui card" *ngFor="let d of drivers">
+                            <div class="content" [ngSwitch]="d.type">
+                                <ng-container *ngSwitchCase="'local'">
                                     <div class="center aligned header">
                                         <i class="ui lock icon huge"></i>
                                     </div>
                                     <div class="center aligned description">
                                         Local
                                     </div>
-                                </div>
-                                <div class="extra content center aligned">
-                                    <button class="ui primary button small"
-                                        (click)="clickConsumerDetails(mConsumers[d.type])">{{'common_details' | translate}}</button>
-                                    <button class="ui green button small"
-                                        (click)="clickConsumerLocalReset()">{{'account_password_btn_reset' | translate}}</button>
-                                </div>
-                            </div>
-                            <div class="ui card" *ngSwitchDefault>
-                                <div class="content">
+                                </ng-container>
+                                <ng-container *ngSwitchCase="'ldap'">
+                                    <div class="center aligned header">
+                                        <i class="ui address book icon huge"></i>
+                                    </div>
+                                    <div class="center aligned description">
+                                        LDAP
+                                    </div>
+                                </ng-container>
+                                <ng-container *ngSwitchCase="'corporate-sso'">
+                                    <div class="center aligned header">
+                                        <i class="ui shield alternate icon huge"></i>
+                                    </div>
+                                    <div class="center aligned description">
+                                        Corporate SSO
+                                    </div>
+                                </ng-container>
+                                <ng-container *ngSwitchDefault>
                                     <div class="center aligned header">
                                         <i class="ui {{d.type}} icon huge"></i>
                                     </div>
                                     <div class="center aligned description">
                                         {{d.type | titlecase}}
                                     </div>
-                                </div>
-                                <div class="extra content center aligned">
-                                    <ng-container *ngIf="mConsumers[d.type]">
+                                </ng-container>
+                            </div>
+                            <div class="extra content center aligned">
+                                <ng-container *ngIf="mConsumers[d.type]" [ngSwitch]="d.type">
+                                    <ng-container *ngSwitchCase="'local'">
+                                        <button class="ui primary button small"
+                                            (click)="clickConsumerDetails(mConsumers[d.type])">{{'common_details' | translate}}</button>
+                                        <button class="ui green button small"
+                                            (click)="clickConsumerLocalReset()">{{'account_password_btn_reset' | translate}}</button>
+                                    </ng-container>
+                                    <ng-container *ngSwitchDefault>
                                         <button class="ui primary button small"
                                             (click)="clickConsumerDetails(mConsumers[d.type])">{{'common_details' | translate}}</button>
                                         <app-confirm-button [class]="'small'" [color]="'red'"
@@ -113,24 +123,31 @@
                                             [title]="'user_auth_consumer_detach_btn'">
                                         </app-confirm-button>
                                     </ng-container>
-                                    <ng-container *ngIf="!mConsumers[d.type]">
+                                </ng-container>
+                                <ng-container *ngIf="!mConsumers[d.type]" [ngSwitch]="d.type">
+                                    <ng-container *ngSwitchCase="'local'">
+                                        <button class="ui green button small" [class.loading]="loadingLocalReset"
+                                            (click)="clickConsumerLocalReset()">{{'account_password_btn_reset' | translate}}</button>
+                                    </ng-container>
+                                    <ng-container *ngSwitchDefault>
                                         <button class="ui green button small"
                                             (click)="clickConsumerSignin(d.type)">{{'account_btn_signin' | translate}}</button>
                                     </ng-container>
-                                </div>
+                                </ng-container>
                             </div>
-                        </ng-container>
+                        </div>
                     </div>
                 </div>
                 <div class="sixteen wide column">
                     <h3 class="ui header">
                         <div class="content">
                             {{ 'user_auth_my_consumers' | translate }}
-                            <i class="add circle link icon green" (click)="clickConsumerCreate()"></i>
+                            <i *ngIf="editable" class="add circle link icon green" (click)="clickConsumerCreate()"></i>
                         </div>
                     </h3>
                     <app-data-table [withFilter]="filterConsumers" [withPagination]="10" [columns]="columnsConsumers"
-                        [data]="myConsumers" [loading]="loadingAuthData"></app-data-table>
+                        [data]="myConsumers" [loading]="loadingAuthData">
+                    </app-data-table>
                 </div>
                 <div class="sixteen wide column">
                     <h2 class="ui header">
@@ -146,6 +163,7 @@
         </app-scrollview>
     </div>
 </div>
-<app-consumer-create-modal #consumerCreateModal (close)="modalClose()"></app-consumer-create-modal>
-<app-consumer-details-modal #consumerDetailsModal [consumer]="selectedConsumer" (close)="modalClose()">
+<app-consumer-create-modal #consumerCreateModal [user]="user" (close)="modalCreateClose($event)">
+</app-consumer-create-modal>
+<app-consumer-details-modal #consumerDetailsModal [consumer]="selectedConsumer" (close)="modalDetailsClose($event)">
 </app-consumer-details-modal>

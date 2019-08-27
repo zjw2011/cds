@@ -10,9 +10,12 @@ import { AuthenticationService } from 'app/service/authentication/authentication
     styleUrls: ['./signin.scss']
 })
 export class SigninComponent implements OnInit {
+    loading: boolean;
     redirect: string;
+    mfa: boolean;
     apiURL: string;
 
+    isFirstConnection: boolean;
     localDriver: AuthDriverManifest;
     ldapDriver: AuthDriverManifest;
     externalDrivers: Array<AuthDriverManifest>;
@@ -23,16 +26,26 @@ export class SigninComponent implements OnInit {
         private _router: Router,
         private _route: ActivatedRoute
     ) {
+        this.loading = true;
         this._route.queryParams.subscribe(queryParams => {
             this.redirect = queryParams.redirect;
+            this.mfa = false;
         });
     }
 
     ngOnInit() {
-        this._authenticationService.getDrivers().subscribe((ds) => {
-            this.localDriver = ds.find(d => d.type === 'local');
-            this.ldapDriver = ds.find(d => d.type === 'ldap');
-            this.externalDrivers = ds.filter(d => d.type !== 'local' && d.type !== 'ldap' && d.type !== 'builtin');
+        this._authenticationService.getDrivers().subscribe((data) => {
+            this.isFirstConnection = data.is_first_connection;
+            this.localDriver = data.manifests.find(d => d.type === 'local');
+            this.ldapDriver = data.manifests.find(d => d.type === 'ldap');
+            this.externalDrivers = data.manifests
+                .filter(d => d.type !== 'local' && d.type !== 'ldap' && d.type !== 'builtin')
+                .sort((a, b) => a.type < b.type ? -1 : 1)
+                .map(d => {
+                    d.icon = d.type === 'corporate-sso' ? 'shield alternate' : d.type;
+                    return d;
+                });
+            this.loading = false;
         });
     }
 
@@ -45,7 +58,8 @@ export class SigninComponent implements OnInit {
             f.value.fullname,
             f.value.email,
             f.value.username,
-            f.value.password
+            f.value.password,
+            f.value.init_token
         ).subscribe(() => {
             this.showSuccessSignup = true;
         });
@@ -53,6 +67,16 @@ export class SigninComponent implements OnInit {
 
     signin(f: NgForm) {
         this._authenticationService.localSignin(f.value.username, f.value.password).subscribe(() => {
+            if (this.redirect) {
+                this._router.navigateByUrl(decodeURIComponent(this.redirect));
+            } else {
+                this._router.navigate(['home']);
+            }
+        });
+    }
+
+    ldapSignin(f: NgForm) {
+        this._authenticationService.ldapSignin(f.value.bind, f.value.password, f.value.init_token).subscribe(() => {
             if (this.redirect) {
                 this._router.navigateByUrl(decodeURIComponent(this.redirect));
             } else {

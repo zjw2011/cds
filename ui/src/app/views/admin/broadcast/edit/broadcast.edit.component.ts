@@ -1,10 +1,10 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
 import { Broadcast } from 'app/model/broadcast.model';
 import { NavbarProjectData } from 'app/model/navbar.model';
-import { User } from 'app/model/user.model';
+import { AuthentifiedUser } from 'app/model/user.model';
 import { BroadcastService } from 'app/service/broadcast/broadcast.service';
 import { BroadcastStore } from 'app/service/broadcast/broadcast.store';
 import { NavbarService } from 'app/service/navbar/navbar.service';
@@ -19,7 +19,8 @@ import { finalize } from 'rxjs/operators';
 @Component({
     selector: 'app-broadcast-edit',
     templateUrl: './broadcast.edit.html',
-    styleUrls: ['./broadcast.edit.scss']
+    styleUrls: ['./broadcast.edit.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 @AutoUnsubscribe()
 export class BroadcastEditComponent {
@@ -27,7 +28,7 @@ export class BroadcastEditComponent {
     deleteLoading = false;
     broadcast: Broadcast;
     broadcastSub: Subscription;
-    currentUser: User;
+    currentUser: AuthentifiedUser;
     canEdit = false;
     broadcastLevelsList: any;
     levels = Array<string>();
@@ -46,6 +47,7 @@ export class BroadcastEditComponent {
         private _router: Router,
         private _store: Store,
         private _broadcastService: BroadcastService,
+        private _cd: ChangeDetectorRef
     ) {
         this.currentUser = this._store.selectSnapshot(AuthenticationState.user);
         this.broadcastLevelsList = this._broadcastService.getBroadcastLevels()
@@ -62,6 +64,7 @@ export class BroadcastEditComponent {
                     this.projects = [voidProj].concat(data.filter((elt) => elt.type === 'project'));
                     this.currentUser = this._store.selectSnapshot(AuthenticationState.user);
                 }
+                this._cd.markForCheck();
             });
 
         this.paramsSub = this._route.params.subscribe(params => {
@@ -70,19 +73,21 @@ export class BroadcastEditComponent {
                 let broadcast = bcs.get(id)
                 if (broadcast) {
                     this.broadcast = broadcast;
-                    if (this.currentUser.admin) {
-                        this.canEdit = true;
-                    }
+                    this.canEdit = this.currentUser.isAdmin();
                     this.updatePath();
                 }
             });
+            this._cd.markForCheck();
         });
     }
 
     clickDeleteButton(): void {
         this.deleteLoading = true;
         this._broadcastStore.delete(this.broadcast)
-            .pipe(finalize(() => this.deleteLoading = false))
+            .pipe(finalize(() => {
+                this.deleteLoading = false;
+                this._cd.markForCheck();
+            }))
             .subscribe(wm => {
                 this._toast.success('', this._translate.instant('broadcast_deleted'));
                 this._router.navigate(['admin', 'broadcast']);
@@ -92,7 +97,10 @@ export class BroadcastEditComponent {
     clickSaveButton(): void {
         this.loading = true;
         this._broadcastStore.update(this.broadcast)
-            .pipe(finalize(() => this.loading = false))
+            .pipe(finalize(() => {
+                this.loading = false;
+                this._cd.markForCheck();
+            }))
             .subscribe(broadcast => {
                 this._toast.success('', this._translate.instant('broadcast_saved'));
                 this._router.navigate(['admin', 'broadcast', this.broadcast.id]);

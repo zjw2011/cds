@@ -195,6 +195,7 @@ var (
 	ErrEnvironmentNotFound                           = Error{ID: 179, Status: http.StatusBadRequest}
 	ErrIntegrationtNotFound                          = Error{ID: 180, Status: http.StatusBadRequest}
 	ErrSignupDisabled                                = Error{ID: 181, Status: http.StatusForbidden}
+	ErrUsernamePresent                               = Error{ID: 182, Status: http.StatusBadRequest}
 )
 
 var errorsAmericanEnglish = map[int]string{
@@ -218,6 +219,7 @@ var errorsAmericanEnglish = map[int]string{
 	ErrNoPipelineBuild.ID:                               "this pipeline build does not exist",
 	ErrApplicationNotFound.ID:                           "application does not exist",
 	ErrInvalidUsername.ID:                               "invalid username",
+	ErrUsernamePresent.ID:                               "username already present",
 	ErrInvalidEmail.ID:                                  "invalid email",
 	ErrGroupPresent.ID:                                  "group already present",
 	ErrInvalidName.ID:                                   "invalid name",
@@ -395,6 +397,7 @@ var errorsFrench = map[int]string{
 	ErrNoPipelineBuild.ID:                               "ce build n'existe pas",
 	ErrApplicationNotFound.ID:                           "l'application n'existe pas",
 	ErrInvalidUsername.ID:                               "nom d'utilisateur invalide",
+	ErrUsernamePresent.ID:                               "le nom d'utilisateur est déjà présent",
 	ErrInvalidEmail.ID:                                  "addresse email invalide",
 	ErrGroupPresent.ID:                                  "le groupe est déjà présent",
 	ErrInvalidName.ID:                                   "le nom est invalide",
@@ -550,11 +553,6 @@ var errorsFrench = map[int]string{
 	ErrSignupDisabled.ID:                                "La création de compte est désactivée pour ce mode d'authentification.",
 }
 
-var errorsLanguages = []map[int]string{
-	errorsAmericanEnglish,
-	errorsFrench,
-}
-
 // Error type.
 type Error struct {
 	ID         int         `json:"id"`
@@ -609,7 +607,17 @@ func (e Error) Translate(al string) string {
 // NewErrorWithStack returns an error with stack.
 func NewErrorWithStack(root error, err error) error {
 	errWithStack := WithStack(root).(errorWithStack)
-	errWithStack.httpError = ExtractHTTPError(err, "")
+
+	// try to recognize http error from source
+	switch e := err.(type) {
+	case errorWithStack:
+		errWithStack.httpError = e.httpError
+	case Error:
+		errWithStack.httpError = e
+	default:
+		errWithStack.httpError = ExtractHTTPError(err, "")
+	}
+
 	return errWithStack
 }
 

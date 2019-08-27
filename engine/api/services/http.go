@@ -261,7 +261,7 @@ func doRequestFromURL(ctx context.Context, db gorp.SqlExecutor, method string, c
 		return nil, nil, 0, sdk.WrapError(err, "services.DoRequest> Request signature failed")
 	}
 
-	log.Debug("services.DoRequest> request %v (%s)", req.URL, req.Header.Get("Authorization"))
+	log.Debug("services.DoRequest> request %s %v (%s)", req.Method, req.URL, req.Header.Get("Authorization"))
 
 	//Do the request
 	resp, errDo := HTTPClient.Do(req)

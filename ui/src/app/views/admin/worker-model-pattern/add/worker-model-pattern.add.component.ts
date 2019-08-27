@@ -1,27 +1,28 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component } from '@angular/core';
 import { Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
+import { AuthentifiedUser } from 'app/model/user.model';
+import { ModelPattern } from 'app/model/worker-model.model';
+import { WorkerModelService } from 'app/service/worker-model/worker-model.service';
+import { PathItem } from 'app/shared/breadcrumb/breadcrumb.component';
+import { ToastService } from 'app/shared/toast/ToastService';
 import { AuthenticationState } from 'app/store/authentication.state';
 import omit from 'lodash-es/omit';
 import { finalize } from 'rxjs/operators';
-import { User } from '../../../../model/user.model';
-import { ModelPattern } from '../../../../model/worker-model.model';
-import { WorkerModelService } from '../../../../service/worker-model/worker-model.service';
-import { PathItem } from '../../../../shared/breadcrumb/breadcrumb.component';
-import { ToastService } from '../../../../shared/toast/ToastService';
 
 @Component({
     selector: 'app-worker-model-pattern-add',
     templateUrl: './worker-model-pattern.add.html',
-    styleUrls: ['./worker-model-pattern.add.scss']
+    styleUrls: ['./worker-model-pattern.add.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class WorkerModelPatternAddComponent {
     loading = false;
     addLoading = false;
     pattern: ModelPattern;
     workerModelTypes: Array<string>;
-    currentUser: User;
+    currentUser: AuthentifiedUser;
     envNames: Array<string> = [];
     newEnvName: string;
     newEnvValue: string;
@@ -32,12 +33,16 @@ export class WorkerModelPatternAddComponent {
         private _toast: ToastService,
         private _translate: TranslateService,
         private _router: Router,
-        private _store: Store
+        private _store: Store,
+        private _cd: ChangeDetectorRef
     ) {
         this.currentUser = this._store.selectSnapshot(AuthenticationState.user);
         this.loading = true;
         this._workerModelService.getTypes()
-            .pipe(finalize(() => this.loading = false))
+            .pipe(finalize(() => {
+                this.loading = false;
+                this._cd.markForCheck();
+            }))
             .subscribe(wmt => this.workerModelTypes = wmt);
         this.pattern = new ModelPattern();
 
@@ -58,7 +63,10 @@ export class WorkerModelPatternAddComponent {
 
         this.addLoading = true;
         this._workerModelService.createWorkerModelPattern(this.pattern)
-            .pipe(finalize(() => this.addLoading = false))
+            .pipe(finalize(() => {
+                this.addLoading = false;
+                this._cd.markForCheck();
+            }))
             .subscribe((pattern) => {
                 this._toast.success('', this._translate.instant('worker_model_pattern_saved'));
                 this._router.navigate(['admin', 'worker-model-pattern', pattern.type, pattern.name]);

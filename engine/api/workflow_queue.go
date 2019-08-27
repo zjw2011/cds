@@ -28,6 +28,10 @@ import (
 
 func (api *API) postTakeWorkflowJobHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+		if _, isWorker := api.isWorker(ctx); !isWorker {
+			return sdk.ErrForbidden
+		}
+
 		id, err := requestVarInt(r, "id")
 		if err != nil {
 			return err
@@ -44,9 +48,13 @@ func (api *API) postTakeWorkflowJobHandler() service.Handler {
 		}
 
 		// Load worker model
-		wm, err := workermodel.LoadByID(api.mustDB(), wk.ModelID)
-		if err != nil {
-			return sdk.WithStack(sdk.ErrNoWorkerModel)
+		var workerModelName string
+		if wk.ModelID != nil {
+			wm, err := workermodel.LoadByID(api.mustDB(), *wk.ModelID)
+			if err != nil {
+				return sdk.WithStack(sdk.ErrNoWorkerModel)
+			}
+			workerModelName = wm.Name
 		}
 
 		// Load job run
@@ -63,11 +71,11 @@ func (api *API) postTakeWorkflowJobHandler() service.Handler {
 		// Checks that the token used by the worker cas access to one of the execgroups
 		grantedGroupIDs := append(getAPIConsumer(ctx).GetGroupIDs(), group.SharedInfraGroup.ID)
 		if !pbj.ExecGroups.HasOneOf(grantedGroupIDs...) {
-			return sdk.WrapError(sdk.ErrForbidden, "Worker %s (%s) is not authorized to take this job:%d execGroups:%+v", wk.Name, wm.Name, id, pbj.ExecGroups)
+			return sdk.WrapError(sdk.ErrForbidden, "Worker %s (%s) is not authorized to take this job:%d execGroups:%+v", wk.Name, workerModelName, id, pbj.ExecGroups)
 		}
 
 		pbji := &sdk.WorkflowNodeJobRunData{}
-		report, errT := takeJob(ctx, api.mustDB, api.Cache, p, id, wm.Name, pbji, wk)
+		report, errT := takeJob(ctx, api.mustDB, api.Cache, p, id, workerModelName, pbji, wk)
 		if errT != nil {
 			return sdk.WrapError(errT, "Cannot takeJob nodeJobRunID:%d", id)
 		}
@@ -85,7 +93,7 @@ func takeJob(ctx context.Context, dbFunc func() *gorp.DbMap, store cache.Store, 
 	if errBegin != nil {
 		return nil, sdk.WrapError(errBegin, "Cannot start transaction")
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() // nolint
 
 	//Prepare spawn infos
 	infos := []sdk.SpawnInfo{
@@ -210,10 +218,15 @@ func (api *API) getWorkflowJobHandler() service.Handler {
 
 func (api *API) postVulnerabilityReportHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+		if _, isWorker := api.isWorker(ctx); !isWorker {
+			return sdk.ErrForbidden
+		}
+
 		id, errc := requestVarInt(r, "permID")
 		if errc != nil {
 			return sdk.WrapError(errc, "Invalid id")
 		}
+
 		nr, errNR := workflow.LoadNodeRunByNodeJobID(api.mustDB(), id, workflow.LoadRunOptions{
 			DisableDetailledNodeRun: true,
 		})
@@ -265,7 +278,7 @@ func (api *API) postSpawnInfosWorkflowJobHandler() service.AsynchronousHandler {
 		if errBegin != nil {
 			return sdk.WrapError(errBegin, "Cannot start transaction")
 		}
-		defer tx.Rollback()
+		defer tx.Rollback() // nolint
 
 		if _, err := workflow.LoadNodeJobRun(tx, api.Cache, id); err != nil {
 			if !sdk.ErrorIs(err, sdk.ErrWorkflowNodeRunJobNotFound) {
@@ -287,9 +300,9 @@ func (api *API) postSpawnInfosWorkflowJobHandler() service.AsynchronousHandler {
 
 func (api *API) postWorkflowJobResultHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		id, errc := requestVarInt(r, "permID")
-		if errc != nil {
-			return sdk.WrapError(errc, "invalid id")
+		id, err := requestVarInt(r, "permID")
+		if err != nil {
+			return err
 		}
 
 		wk, ok := api.isWorker(ctx)
@@ -363,7 +376,7 @@ func postJobResult(ctx context.Context, dbFunc func(context.Context) *gorp.DbMap
 	if errb != nil {
 		return nil, sdk.WrapError(errb, "postJobResult> Cannot begin tx")
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() // nolint
 
 	//Load workflow node job run
 	job, errj := workflow.LoadAndLockNodeJobRunSkipLocked(ctx, tx, store, res.BuildID)
@@ -478,8 +491,8 @@ func postJobResult(ctx context.Context, dbFunc func(context.Context) *gorp.DbMap
 	return report, nil
 }
 
-func (api *API) postWorkflowJobLogsHandler() service.AsynchronousHandler {
-	return func(ctx context.Context, r *http.Request) error {
+func (api *API) postWorkflowJobLogsHandler() service.Handler {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 		id, errr := requestVarInt(r, "permID")
 		if errr != nil {
 			return sdk.WrapError(errr, "Invalid id")
@@ -488,6 +501,11 @@ func (api *API) postWorkflowJobLogsHandler() service.AsynchronousHandler {
 		pbJob, errJob := workflow.LoadNodeJobRun(api.mustDB(), api.Cache, id)
 		if errJob != nil {
 			return sdk.WrapError(errJob, "Cannot get job run %d", id)
+		}
+
+		_, ok := api.isWorker(ctx)
+		if !ok {
+			return sdk.WithStack(sdk.ErrForbidden)
 		}
 
 		// Checks that the token used by the worker cas access to one of the execgroups
@@ -500,6 +518,8 @@ func (api *API) postWorkflowJobLogsHandler() service.AsynchronousHandler {
 		if err := service.UnmarshalBody(r, &logs); err != nil {
 			return sdk.WrapError(err, "Unable to parse body")
 		}
+
+		log.Debug("postWorkflowJobLogsHandler> Logs: %+v", logs)
 
 		if err := workflow.AddLog(api.mustDB(), pbJob, &logs, api.Config.Log.StepMaxSize); err != nil {
 			return sdk.WithStack(err)
@@ -553,9 +573,13 @@ func (api *API) postWorkflowJobServiceLogsHandler() service.AsynchronousHandler 
 
 func (api *API) postWorkflowJobStepStatusHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		id, errr := requestVarInt(r, "permID")
-		if errr != nil {
-			return sdk.WrapError(errr, "Invalid id")
+		if _, isWorker := api.isWorker(ctx); !isWorker {
+			return sdk.ErrForbidden
+		}
+
+		id, err := requestVarInt(r, "permID")
+		if err != nil {
+			return err
 		}
 		dbWithCtx := api.mustDBWithCtx(ctx)
 
@@ -566,7 +590,7 @@ func (api *API) postWorkflowJobStepStatusHandler() service.Handler {
 
 		var step sdk.StepStatus
 		if err := service.UnmarshalBody(r, &step); err != nil {
-			return sdk.WrapError(err, "Error while unmarshal job")
+			return err
 		}
 
 		found := false
@@ -590,7 +614,7 @@ func (api *API) postWorkflowJobStepStatusHandler() service.Handler {
 		if errB != nil {
 			return sdk.WrapError(errB, "Cannot start transaction")
 		}
-		defer tx.Rollback()
+		defer tx.Rollback() // nolint
 
 		if err := workflow.UpdateNodeJobRun(ctx, tx, nodeJobRun); err != nil {
 			return sdk.WrapError(err, "Error while update job run. JobID on handler: %d", id)
@@ -763,15 +787,19 @@ func getSinceUntilLimitHeader(ctx context.Context, w http.ResponseWriter, r *htt
 
 func (api *API) postWorkflowJobCoverageResultsHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+		if _, isWorker := api.isWorker(ctx); !isWorker {
+			return sdk.ErrForbidden
+		}
+
 		// Load and lock Existing workflow Run Job
-		id, errI := requestVarInt(r, "permID")
-		if errI != nil {
-			return sdk.WrapError(errI, "Invalid node job run ID")
+		id, err := requestVarInt(r, "permID")
+		if err != nil {
+			return err
 		}
 
 		var report coverage.Report
 		if err := service.UnmarshalBody(r, &report); err != nil {
-			return sdk.WrapError(err, "Cannot unmarshal request")
+			return err
 		}
 
 		wnr, errL := workflow.LoadNodeRunByNodeJobID(api.mustDB(), id, workflow.LoadRunOptions{})
@@ -810,16 +838,20 @@ func (api *API) postWorkflowJobCoverageResultsHandler() service.Handler {
 
 func (api *API) postWorkflowJobTestsResultsHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+		if _, isWorker := api.isWorker(ctx); !isWorker {
+			return sdk.ErrForbidden
+		}
+
 		// Unmarshal into results
 		var new venom.Tests
 		if err := service.UnmarshalBody(r, &new); err != nil {
-			return sdk.WrapError(err, "Cannot unmarshal request")
+			return err
 		}
 
 		// Load and lock Existing workflow Run Job
-		id, errI := requestVarInt(r, "permID")
-		if errI != nil {
-			return sdk.WrapError(errI, "postWorkflowJobTestsResultsHandler> Invalid node job run ID")
+		id, err := requestVarInt(r, "permID")
+		if err != nil {
+			return err
 		}
 
 		nodeRunJob, errJobRun := workflow.LoadNodeJobRun(api.mustDB(), api.Cache, id)
@@ -831,7 +863,7 @@ func (api *API) postWorkflowJobTestsResultsHandler() service.Handler {
 		if errB != nil {
 			return sdk.WrapError(errB, "postWorkflowJobTestsResultsHandler> Cannot start transaction")
 		}
-		defer tx.Rollback()
+		defer tx.Rollback() // nolint
 
 		nr, err := workflow.LoadAndLockNodeRunByID(ctx, tx, nodeRunJob.WorkflowNodeRunID)
 		if err != nil {
@@ -908,21 +940,25 @@ func (api *API) postWorkflowJobTestsResultsHandler() service.Handler {
 
 func (api *API) postWorkflowJobTagsHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		id, errr := requestVarInt(r, "permID")
-		if errr != nil {
-			return sdk.WrapError(errr, "postWorkflowJobTagsHandler> Invalid id")
+		if _, isWorker := api.isWorker(ctx); !isWorker {
+			return sdk.ErrForbidden
 		}
 
-		var tags = []sdk.WorkflowRunTag{}
+		id, err := requestVarInt(r, "permID")
+		if err != nil {
+			return err
+		}
+
+		var tags []sdk.WorkflowRunTag
 		if err := service.UnmarshalBody(r, &tags); err != nil {
-			return sdk.WrapError(err, "Unable to unmarshal body")
+			return err
 		}
 
 		tx, errb := api.mustDB().Begin()
 		if errb != nil {
 			return sdk.WrapError(errb, "postWorkflowJobTagsHandler> Unable to start transaction")
 		}
-		defer tx.Rollback()
+		defer tx.Rollback() // nolint
 
 		workflowRun, errl := workflow.LoadAndLockRunByJobID(tx, id, workflow.LoadRunOptions{})
 		if errl != nil {

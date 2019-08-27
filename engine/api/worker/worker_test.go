@@ -32,7 +32,7 @@ func TestDAO(t *testing.T) {
 	w := &sdk.Worker{
 		ID:         "foofoo",
 		Name:       "foo.bar.io",
-		ModelID:    m.ID,
+		ModelID:    &m.ID,
 		HatcheryID: hSrv.ID,
 		ConsumerID: hCons.ID,
 		Status:     sdk.StatusWaiting,
@@ -78,7 +78,7 @@ func TestRegister(t *testing.T) {
 
 	w, err := worker.RegisterWorker(db, store, hatchery.SpawnArguments{
 		HatcheryName: h.Name,
-		Model:        *m,
+		Model:        m,
 		RegisterOnly: true,
 		WorkerName:   sdk.RandomString(10),
 	}, h.ID, c, sdk.WorkerRegistrationForm{

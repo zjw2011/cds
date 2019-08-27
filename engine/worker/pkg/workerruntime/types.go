@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/ovh/cds/sdk/cdsclient"
+	"github.com/ovh/cds/sdk/log"
 
 	"github.com/ovh/cds/sdk"
 	"github.com/spf13/afero"
@@ -88,15 +89,17 @@ func SetStepOrder(ctx context.Context, i int) context.Context {
 	return context.WithValue(ctx, stepOrder, i)
 }
 
-func WorkingDirectory(ctx context.Context) (string, error) {
+func WorkingDirectory(ctx context.Context) (afero.File, error) {
 	wdi := ctx.Value(workDir)
-	wd, ok := wdi.(string)
+	wd, ok := wdi.(afero.File)
 	if !ok {
-		return "", errors.New("unable to get working directory")
+		return nil, errors.New("unable to get working directory")
 	}
+	log.Debug("WorkingDirectory> working directory is : %s", wd.Name())
 	return wd, nil
 }
 
-func SetWorkingDirectory(ctx context.Context, s string) context.Context {
+func SetWorkingDirectory(ctx context.Context, s afero.File) context.Context {
+	log.Debug("SetWorkingDirectory> working directory is: %s", s.Name())
 	return context.WithValue(ctx, workDir, s)
 }

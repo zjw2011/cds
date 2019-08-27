@@ -135,7 +135,7 @@ func (api *API) postWorkflowImportHandler() service.Handler {
 		if errtx != nil {
 			return sdk.WrapError(errtx, "Unable to start transaction")
 		}
-		defer tx.Rollback()
+		defer tx.Rollback() // nolint
 
 		u := getAPIConsumer(ctx)
 
@@ -204,6 +204,11 @@ func (api *API) putWorkflowImportHandler() service.Handler {
 			return sdk.WrapError(err, "Unable to load workflow")
 		}
 
+		// if workflow is as-code, we can't save it from edit as yml
+		if wf.FromRepository != "" {
+			return sdk.WithStack(sdk.ErrForbidden)
+		}
+
 		body, errr := ioutil.ReadAll(r.Body)
 		if errr != nil {
 			return sdk.NewError(sdk.ErrWrongRequest, errr)
@@ -241,7 +246,6 @@ func (api *API) putWorkflowImportHandler() service.Handler {
 		wrkflw, msgList, globalError := workflow.ParseAndImport(ctx, tx, api.Cache, proj, wf, ew, u, workflow.ImportOptions{Force: true, WorkflowName: wfName})
 		msgListString := translate(r, msgList)
 		if globalError != nil {
-
 			return sdk.WrapError(globalError, "Unable to import workflow %s", ew.Name)
 		}
 
@@ -249,9 +253,8 @@ func (api *API) putWorkflowImportHandler() service.Handler {
 			return sdk.WrapError(err, "Cannot commit transaction")
 		}
 
-		oldW, errL := workflow.Load(ctx, api.mustDB(), api.Cache, proj, wfName, workflow.LoadOptions{})
-		if errL == nil {
-			event.PublishWorkflowUpdate(key, *wrkflw, *oldW, u)
+		if wf != nil {
+			event.PublishWorkflowUpdate(key, *wrkflw, *wf, u)
 		}
 
 		if wrkflw != nil {

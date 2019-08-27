@@ -1,6 +1,5 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Action, createSelector, State, StateContext } from '@ngxs/store';
-import { GroupPermission } from 'app/model/group.model';
 import { Operation } from 'app/model/operation.model';
 import { WNode, WNodeHook, WNodeTrigger, Workflow } from 'app/model/workflow.model';
 import { WorkflowNodeRun, WorkflowRun } from 'app/model/workflow.run.model';
@@ -273,31 +272,6 @@ export class WorkflowState {
         }));
     }
 
-    //  ------- Group Permission --------- //
-    @Action(actionWorkflow.AddGroupInAllWorkflows)
-    propagateProjectPermission(ctx: StateContext<WorkflowStateModel>, action: actionWorkflow.AddGroupInAllWorkflows) {
-        const state = ctx.getState();
-        if (!state.workflow) {
-            return;
-        }
-        if (state.workflow.project_key !== action.payload.projectKey) {
-            ctx.setState({
-                ...state,
-                workflow: null
-            });
-            return
-        }
-        let group: GroupPermission = { ...action.payload.group, hasChanged: false, updating: false };
-        let wf = Object.assign({}, state.workflow, <Workflow>{
-            groups: [group].concat(state.workflow.groups)
-        });
-
-        ctx.setState({
-            ...state,
-            workflow: wf,
-        });
-    }
-
     @Action(actionWorkflow.AddGroupInWorkflow)
     addGroupPermission(ctx: StateContext<WorkflowStateModel>, action: actionWorkflow.AddGroupInWorkflow) {
         return this._http.post<Workflow>(
@@ -390,6 +364,43 @@ export class WorkflowState {
             projectKey: action.payload.projectKey,
             workflowName: action.payload.workflowName,
             changes: workflow
+        }));
+    }
+
+    //  ------- Event integration --------- //
+    @Action(actionWorkflow.UpdateEventIntegrationsWorkflow)
+    addEventIntegration(ctx: StateContext<WorkflowStateModel>, action: actionWorkflow.UpdateEventIntegrationsWorkflow) {
+        const state = ctx.getState();
+        const workflow: Workflow = {
+            ...state.workflow,
+            event_integrations: action.payload.eventIntegrations
+        };
+
+        return ctx.dispatch(new actionWorkflow.UpdateWorkflow({
+            projectKey: action.payload.projectKey,
+            workflowName: action.payload.workflowName,
+            changes: workflow
+        }));
+    }
+
+    @Action(actionWorkflow.DeleteEventIntegrationWorkflow)
+    deleteEventIntegration(ctx: StateContext<WorkflowStateModel>, action: actionWorkflow.DeleteEventIntegrationWorkflow) {
+        const state = ctx.getState();
+
+        return this._http.delete<null>(
+            `/project/${action.payload.projectKey}/workflows/` +
+            `${action.payload.workflowName}/eventsintegration/${action.payload.integrationId}`
+        ).pipe(tap(() => {
+            const workflow: Workflow = {
+                ...state.workflow,
+                event_integrations: state.workflow.event_integrations.filter((integ) => integ.id !== action.payload.integrationId)
+            };
+
+            return ctx.dispatch(new actionWorkflow.UpdateWorkflow({
+                projectKey: action.payload.projectKey,
+                workflowName: action.payload.workflowName,
+                changes: workflow
+            }));
         }));
     }
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ovh/cds/engine/api/application"
 	"github.com/ovh/cds/engine/api/bootstrap"
@@ -146,7 +147,7 @@ func TestLoadByWorkflowID(t *testing.T) {
 	defer end()
 	key := sdk.RandomString(10)
 
-	proj := assets.InsertTestProject(t, db, cache, key, key, nil)
+	proj := assets.InsertTestProject(t, db, cache, key, key)
 	app := sdk.Application{
 		Name:       "my-app",
 		ProjectKey: proj.Key,
@@ -201,9 +202,13 @@ func TestLoadByWorkerModel(t *testing.T) {
 	model2 := sdk.Model{Name: sdk.RandomString(10), Group: g2, GroupID: g2.ID}
 
 	projectKey := sdk.RandomString(10)
-	proj := assets.InsertTestProject(t, db, cache, projectKey, projectKey, nil)
+	proj := assets.InsertTestProject(t, db, cache, projectKey, projectKey)
 
-	assert.NoError(t, group.InsertGroupInProject(db, proj.ID, g2.ID, sdk.PermissionReadWriteExecute))
+	require.NoError(t, group.InsertLinkGroupProject(db, &group.LinkGroupProject{
+		GroupID:   g2.ID,
+		ProjectID: proj.ID,
+		Role:      sdk.PermissionReadWriteExecute,
+	}))
 
 	// first pipeline with requirement shared.infra/model
 	pip1 := sdk.Pipeline{ProjectID: proj.ID, ProjectKey: proj.Key, Name: sdk.RandomString(10)}
@@ -270,11 +275,11 @@ func TestLoadByWorkerModel(t *testing.T) {
 	}
 	assert.Equal(t, pip3.Name, pips[0].Name)
 
-	pips, err = pipeline.LoadByWorkerModelAndGroupIDs(context.TODO(), db, &model1, sdk.GroupsToIDs([]sdk.Group{}))
+	pips, err = pipeline.LoadByWorkerModelAndGroupIDs(context.TODO(), db, &model1, []int64{})
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(pips))
 
-	pips, err = pipeline.LoadByWorkerModelAndGroupIDs(context.TODO(), db, &model1, sdk.GroupsToIDs([]sdk.Group{*g2}))
+	pips, err = pipeline.LoadByWorkerModelAndGroupIDs(context.TODO(), db, &model1, sdk.Groups{*g2}.ToIDs())
 	assert.NoError(t, err)
 	if !assert.Equal(t, 2, len(pips)) {
 		t.FailNow()
@@ -283,7 +288,7 @@ func TestLoadByWorkerModel(t *testing.T) {
 	assert.Equal(t, pip1.Name, pips[0].Name)
 	assert.Equal(t, pip2.Name, pips[1].Name)
 
-	pips, err = pipeline.LoadByWorkerModelAndGroupIDs(context.TODO(), db, &model2, sdk.GroupsToIDs([]sdk.Group{*g2}))
+	pips, err = pipeline.LoadByWorkerModelAndGroupIDs(context.TODO(), db, &model2, sdk.Groups{*g2}.ToIDs())
 	assert.NoError(t, err)
 
 	if !assert.Equal(t, 1, len(pips)) {

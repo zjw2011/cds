@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
@@ -10,7 +10,7 @@ import cloneDeep from 'lodash-es/cloneDeep';
 import { Subscription } from 'rxjs';
 import { filter, finalize } from 'rxjs/operators';
 import { LoadOpts, Project } from '../../../model/project.model';
-import { User } from '../../../model/user.model';
+import { AuthentifiedUser } from '../../../model/user.model';
 import { Warning } from '../../../model/warning.model';
 import { HelpersService } from '../../../service/helpers/helpers.service';
 import { WarningStore } from '../../../service/warning/warning.store';
@@ -21,11 +21,12 @@ import { ToastService } from '../../../shared/toast/ToastService';
 @Component({
     selector: 'app-project-show',
     templateUrl: './project.html',
-    styleUrls: ['./project.scss']
+    styleUrls: ['./project.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 @AutoUnsubscribe()
 export class ProjectShowComponent implements OnInit {
-    currentUser: User;
+    currentUser: AuthentifiedUser;
 
     project: Project;
     projectSubscriber: Subscription;
@@ -51,7 +52,8 @@ export class ProjectShowComponent implements OnInit {
         public _translate: TranslateService,
         private _warningStore: WarningStore,
         private _helpersService: HelpersService,
-        private _store: Store
+        private _store: Store,
+        private _cd: ChangeDetectorRef
     ) {
         this.initWarnings();
         this.currentUser = this._store.selectSnapshot(AuthenticationState.user);
@@ -70,6 +72,7 @@ export class ProjectShowComponent implements OnInit {
                     });
                 }
                 this.project = proj;
+                this._cd.markForCheck();
             });
     }
 
@@ -123,6 +126,7 @@ export class ProjectShowComponent implements OnInit {
                 if (current_tab) {
                     this.selectTab(current_tab);
                 }
+                this._cd.markForCheck();
             }
             this._route.params.subscribe(routeParams => {
                 const key = routeParams['key'];
@@ -133,6 +137,7 @@ export class ProjectShowComponent implements OnInit {
                     if (!this.project) {
                         this.refreshDatas(key);
                     }
+                    this._cd.markForCheck();
                 }
             });
         });
@@ -187,6 +192,7 @@ export class ProjectShowComponent implements OnInit {
 
         this.warningsSub = this._warningStore.getProjectWarnings(key).subscribe(ws => {
             this.splitWarnings(ws.get(key));
+            this._cd.markForCheck();
         });
     }
 
@@ -235,7 +241,10 @@ export class ProjectShowComponent implements OnInit {
     updateFav() {
         this.loadingFav = true;
         this._store.dispatch(new UpdateFavoriteProject({ projectKey: this.project.key }))
-            .pipe(finalize(() => this.loadingFav = false))
+            .pipe(finalize(() => {
+                this.loadingFav = false;
+                this._cd.markForCheck();
+            }))
             .subscribe(() => this._toast.success('', this._translate.instant('common_favorites_updated')));
     }
 }

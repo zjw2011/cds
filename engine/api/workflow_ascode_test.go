@@ -27,7 +27,7 @@ func TestPostWorkflowAsCodeHandler(t *testing.T) {
 	api, db, _, end := newTestAPI(t)
 	defer end()
 
-	u, pass := assets.InsertAdminUser(db)
+	u, pass := assets.InsertAdminUser(t, db)
 
 	UUID := sdk.UUID()
 
@@ -111,7 +111,7 @@ func TestPostWorkflowAsCodeHandler(t *testing.T) {
 
 	// Create Project
 	pkey := sdk.RandomString(10)
-	proj := assets.InsertTestProject(t, db, api.Cache, pkey, pkey, u)
+	proj := assets.InsertTestProject(t, db, api.Cache, pkey, pkey)
 	assert.NoError(t, repositoriesmanager.InsertForProject(db, proj, &sdk.ProjectVCSServer{
 		Name: "github",
 		Data: map[string]string{
@@ -157,7 +157,7 @@ func TestPostWorkflowAsCodeHandler(t *testing.T) {
 					{
 						HookModelName: sdk.RepositoryWebHookModelName,
 						UUID:          sdk.RandomString(10),
-						Config:        sdk.RepositoryWebHookModel.DefaultConfig,
+						Config:        sdk.RepositoryWebHookModel.DefaultConfig.Clone(),
 						HookModelID:   repoModel.ID,
 					},
 				},

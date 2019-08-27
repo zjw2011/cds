@@ -1,13 +1,12 @@
-import { AfterViewInit, ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { FormControl } from '@angular/forms';
 import { NavigationEnd, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
 import { Application } from 'app/model/application.model';
 import { Broadcast } from 'app/model/broadcast.model';
-import { NavbarProjectData, NavbarSearchItem } from 'app/model/navbar.model';
-import { NavbarRecentData } from 'app/model/navbar.model';
-import { User } from 'app/model/user.model';
+import { NavbarProjectData, NavbarRecentData, NavbarSearchItem } from 'app/model/navbar.model';
+import { AuthentifiedUser } from 'app/model/user.model';
 import { ApplicationStore } from 'app/service/application/application.store';
 import { BroadcastStore } from 'app/service/broadcast/broadcast.store';
 import { LanguageStore } from 'app/service/language/language.store';
@@ -16,6 +15,7 @@ import { RouterService } from 'app/service/router/router.service';
 import { ThemeStore } from 'app/service/theme/theme.store';
 import { WorkflowStore } from 'app/service/workflow/workflow.store';
 import { AutoUnsubscribe } from 'app/shared/decorator/autoUnsubscribe';
+import { SignoutCurrentUser } from 'app/store/authentication.action';
 import { AuthenticationState } from 'app/store/authentication.state';
 import { List } from 'immutable';
 import { Subscription } from 'rxjs';
@@ -24,7 +24,8 @@ import { filter } from 'rxjs/operators';
 @Component({
     selector: 'app-navbar',
     templateUrl: './navbar.html',
-    styleUrls: ['./navbar.scss']
+    styleUrls: ['./navbar.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 @AutoUnsubscribe()
 export class NavbarComponent implements OnInit, AfterViewInit {
@@ -51,7 +52,7 @@ export class NavbarComponent implements OnInit, AfterViewInit {
     broadcastSubscription: Subscription;
     currentRoute: {};
     recentView = true;
-    currentUser: User;
+    currentUser: AuthentifiedUser;
     themeSubscription: Subscription;
     themeSwitch = new FormControl();
 
@@ -70,14 +71,17 @@ export class NavbarComponent implements OnInit, AfterViewInit {
     ) {
         this.userSubscription = this._store.select(AuthenticationState.user).subscribe(u => {
             this.currentUser = u;
+            this._cd.markForCheck();
         });
 
         this.langSubscription = this._language.get().subscribe(l => {
             this.currentCountry = l;
+            this._cd.markForCheck();
         });
 
         this.themeSubscription = this._theme.get().subscribe(t => {
             this.themeSwitch.setValue(t === 'night');
+            this._cd.markForCheck();
         });
 
         this._router.events.pipe(
@@ -98,7 +102,8 @@ export class NavbarComponent implements OnInit, AfterViewInit {
 
     ngAfterViewInit() {
         this._translate.get('navbar_projects_placeholder').subscribe(() => {
-            setTimeout(() => this.ready = true, 1)
+            this.ready = true;
+            this._cd.markForCheck();
         });
     }
 
@@ -211,6 +216,7 @@ export class NavbarComponent implements OnInit, AfterViewInit {
                 });
             }
             this.loading = false;
+            this._cd.markForCheck();
         });
 
         this.broadcastSubscription = this._broadcastStore.getBroadcasts()
@@ -223,6 +229,7 @@ export class NavbarComponent implements OnInit, AfterViewInit {
                     .sort((a, b) => (new Date(b.updated)).getTime() - (new Date(a.updated)).getTime()).slice(0, 4);
                 this.broadcasts = broadcastsToRead
                     .sort((a, b) => (new Date(b.updated)).getTime() - (new Date(a.updated)).getTime());
+                this._cd.markForCheck();
             });
     }
 
@@ -263,10 +270,6 @@ export class NavbarComponent implements OnInit, AfterViewInit {
         this._router.navigate(['project/' + key]);
     }
 
-    getWarningParams(): {} {
-        return this.currentRoute;
-    }
-
     /**
      * Navigate to the selected application.
      */
@@ -281,13 +284,15 @@ export class NavbarComponent implements OnInit, AfterViewInit {
         this._router.navigate(['project', key, 'workflow', workflowName]);
     }
 
-    goToBroadcast(id: number): void {
-        this._router.navigate(['broadcast', id]);
-    }
-
     markAsRead(event: Event, id: number) {
         event.stopPropagation();
         this._broadcastStore.markAsRead(id)
             .subscribe();
+    }
+
+    clickLogout(): void {
+        this._store.dispatch(new SignoutCurrentUser()).subscribe(
+            () => { this._router.navigate(['/auth/signin']); }
+        );
     }
 }

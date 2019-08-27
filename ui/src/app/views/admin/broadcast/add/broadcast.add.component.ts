@@ -1,10 +1,10 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
 import { Broadcast } from 'app/model/broadcast.model';
 import { NavbarProjectData } from 'app/model/navbar.model';
-import { User } from 'app/model/user.model';
+import { AuthentifiedUser } from 'app/model/user.model';
 import { BroadcastService } from 'app/service/broadcast/broadcast.service';
 import { BroadcastStore } from 'app/service/broadcast/broadcast.store';
 import { NavbarService } from 'app/service/navbar/navbar.service';
@@ -18,15 +18,16 @@ import { finalize } from 'rxjs/operators';
 @Component({
     selector: 'app-broadcast-add',
     templateUrl: './broadcast.add.html',
-    styleUrls: ['./broadcast.add.scss']
+    styleUrls: ['./broadcast.add.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
+
 })
 @AutoUnsubscribe()
 export class BroadcastAddComponent {
     loading = false;
     deleteLoading = false;
     broadcast: Broadcast;
-    currentUser: User;
-    canAdd = false;
+    currentUser: AuthentifiedUser;
     broadcastLevelsList: any;
     projects: Array<NavbarProjectData> = [];
     navbarSub: Subscription;
@@ -35,10 +36,13 @@ export class BroadcastAddComponent {
     constructor(
         private _navbarService: NavbarService,
         private _broadcastStore: BroadcastStore,
-        private _toast: ToastService, private _translate: TranslateService,
-        private _route: ActivatedRoute, private _router: Router,
+        private _toast: ToastService,
+        private _translate: TranslateService,
+        private _route: ActivatedRoute,
+        private _router: Router,
         private _store: Store,
-        private _broadcastService: BroadcastService
+        private _broadcastService: BroadcastService,
+        private _cd: ChangeDetectorRef
     ) {
         this.navbarSub = this._navbarService.getData(true).subscribe((data) => {
             this.loading = false;
@@ -50,6 +54,7 @@ export class BroadcastAddComponent {
                 this.currentUser = this._store.selectSnapshot(AuthenticationState.user);
                 this.broadcastLevelsList = this._broadcastService.getBroadcastLevels();
             }
+            this._cd.markForCheck();
         });
 
         this._route.params.subscribe(params => {
@@ -73,7 +78,10 @@ export class BroadcastAddComponent {
 
         this.loading = true;
         this._broadcastStore.create(this.broadcast)
-            .pipe(finalize(() => this.loading = false))
+            .pipe(finalize(() => {
+                this.loading = false;
+                this._cd.markForCheck();
+            }))
             .subscribe(bc => {
                 this._toast.success('', this._translate.instant('broadcast_saved'));
                 this._router.navigate(['admin', 'broadcast', bc.id]);

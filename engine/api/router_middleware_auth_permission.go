@@ -31,6 +31,7 @@ func permissionFunc(api *API) map[string]PermCheckFunc {
 		"permActionName":        api.checkActionPermissions,
 		"permActionBuiltinName": api.checkActionBuiltinPermissions,
 		"permTemplateSlug":      api.checkTemplateSlugPermissions,
+		"permUsernamePublic":    api.checkUserPublicPermissions,
 		"permUsername":          api.checkUserPermissions,
 		"permConsumerID":        api.checkConsumerPermissions,
 		"permSessionID":         api.checkSessionPermissions,
@@ -166,17 +167,18 @@ func (api *API) checkWorkflowPermissions(ctx context.Context, workflowName strin
 			log.Debug("checkWorkflowPermissions> %s access granted to %s/%s because is maintainer", getAPIConsumer(ctx).ID, projectKey, workflowName)
 			observability.Current(ctx, observability.Tag(observability.TagPermission, "is_maintainer"))
 			return nil
-		} else {
-			// If it's about Execute of Write: we have to check if the user is an admin
-			if !isAdmin(ctx) {
-				// The caller doesn't enough permission level from its groups and is not an admin
-				log.Debug("checkWorkflowPermissions> %s is not authorized to %s/%s", getAPIConsumer(ctx).ID, projectKey, workflowName)
-				return sdk.WrapError(sdk.ErrForbidden, "not authorized for workflow %s/%s", projectKey, workflowName)
-			}
-			log.Debug("checkWorkflowPermissions> %s access granted to %s/%s because is admin", getAPIConsumer(ctx).ID, projectKey, workflowName)
-			observability.Current(ctx, observability.Tag(observability.TagPermission, "is_admin"))
-			return nil
 		}
+
+		// If it's about Execute of Write: we have to check if the user is an admin
+		if !isAdmin(ctx) {
+			// The caller doesn't enough permission level from its groups and is not an admin
+			log.Debug("checkWorkflowPermissions> %s is not authorized to %s/%s", getAPIConsumer(ctx).ID, projectKey, workflowName)
+			return sdk.WrapError(sdk.ErrForbidden, "not authorized for workflow %s/%s", projectKey, workflowName)
+		}
+		log.Debug("checkWorkflowPermissions> %s access granted to %s/%s because is admin", getAPIConsumer(ctx).ID, projectKey, workflowName)
+		observability.Current(ctx, observability.Tag(observability.TagPermission, "is_admin"))
+		return nil
+
 	}
 	log.Debug("checkWorkflowPermissions> %s access granted to %s/%s because has permission (max permission = %d)", getAPIConsumer(ctx).ID, projectKey, workflowName, maxLevelPermission)
 	observability.Current(ctx, observability.Tag(observability.TagPermission, "is_granted"))
@@ -197,11 +199,11 @@ func (api *API) checkGroupPermissions(ctx context.Context, groupName string, per
 	log.Debug("api.checkGroupPermissions> group %d has members %v", g.ID, g.Members)
 
 	if permissionValue > sdk.PermissionRead { // Only group administror or CDS administrator can update a group or its dependencies
-		if !isGroupAdmin(ctx, g) && !isMaintainer(ctx) {
+		if !isGroupAdmin(ctx, g) && !isAdmin(ctx) {
 			return sdk.WithStack(sdk.ErrForbidden)
 		}
 	} else {
-		if !isGroupMember(ctx, g) && !isMaintainer(ctx) { // Only group member of CDS administrator can get a group or its dependencies
+		if !isGroupMember(ctx, g) && !isMaintainer(ctx) { // Only group member or CDS maintainer can get a group or its dependencies
 			return sdk.WithStack(sdk.ErrForbidden)
 		}
 	}
@@ -276,6 +278,50 @@ func (api *API) checkTemplateSlugPermissions(ctx context.Context, templateSlug s
 	return nil
 }
 
+// checkUserPublicPermissions give user R to everyone, RW to itself and RW to admin.
+func (api *API) checkUserPublicPermissions(ctx context.Context, username string, permissionValue int, routeVars map[string]string) error {
+	if username == "" {
+		return sdk.WrapError(sdk.ErrWrongRequest, "invalid username")
+	}
+
+	consumer := getAPIConsumer(ctx)
+
+	var u *sdk.AuthentifiedUser
+	var err error
+
+	// Load user from database, returns an error if not exists
+	if username == "me" {
+		u, err = user.LoadByID(ctx, api.mustDB(), consumer.AuthentifiedUserID)
+	} else {
+		u, err = user.LoadByUsername(ctx, api.mustDB(), username)
+	}
+	if err != nil {
+		return sdk.NewErrorWithStack(err, sdk.WrapError(sdk.ErrForbidden, "not authorized for user %s", username))
+	}
+
+	// Valid if the current consumer match given username
+	if consumer.AuthentifiedUserID == u.ID {
+		log.Debug("checkUserPermissions> %s read/write access granted to %s because itself", getAPIConsumer(ctx).ID, u.ID)
+		return nil
+	}
+
+	// Everyone can read public user data
+	if permissionValue == sdk.PermissionRead {
+		log.Debug("checkUserPermissions> %s read access granted to %s on public user data", getAPIConsumer(ctx).ID, u.ID)
+		return nil
+	}
+
+	// If the current user is an admin
+	if isAdmin(ctx) {
+		log.Debug("checkUserPermissions> %s read/write access granted to %s because is admin", getAPIConsumer(ctx).ID, u.ID)
+		return nil
+	}
+
+	log.Debug("checkUserPermissions> %s is not authorized to %s", getAPIConsumer(ctx).ID, u.ID)
+	return sdk.WrapError(sdk.ErrForbidden, "not authorized for user %s", username)
+}
+
+// checkUserPermissions give user RW to itself, R to maintainer and RW to admin.
 func (api *API) checkUserPermissions(ctx context.Context, username string, permissionValue int, routeVars map[string]string) error {
 	if username == "" {
 		return sdk.WrapError(sdk.ErrWrongRequest, "invalid username")
@@ -288,9 +334,9 @@ func (api *API) checkUserPermissions(ctx context.Context, username string, permi
 
 	// Load user from database, returns an error if not exists
 	if username == "me" {
-		u, err = user.LoadByID(ctx, api.mustDB(), consumer.AuthentifiedUserID, user.LoadOptions.Default)
+		u, err = user.LoadByID(ctx, api.mustDB(), consumer.AuthentifiedUserID)
 	} else {
-		u, err = user.LoadByUsername(ctx, api.mustDB(), username, user.LoadOptions.Default)
+		u, err = user.LoadByUsername(ctx, api.mustDB(), username)
 	}
 	if err != nil {
 		return sdk.NewErrorWithStack(err, sdk.WrapError(sdk.ErrForbidden, "not authorized for user %s", username))
@@ -298,14 +344,19 @@ func (api *API) checkUserPermissions(ctx context.Context, username string, permi
 
 	// Valid if the current consumer match given username
 	if consumer.AuthentifiedUserID == u.ID {
-		log.Debug("checkUserPermissions> %s access granted to %s because itself", getAPIConsumer(ctx).ID, u.ID)
+		log.Debug("checkUserPermissions> %s read/write access granted to %s because itself", getAPIConsumer(ctx).ID, u.ID)
 		return nil
 	}
 
 	// If the current user is a maintainer and we want a to read user
 	if permissionValue == sdk.PermissionRead && isMaintainer(ctx) {
-		// Valid if the user was found
 		log.Debug("checkUserPermissions> %s read access granted to %s because is maintainer", getAPIConsumer(ctx).ID, u.ID)
+		return nil
+	}
+
+	// If the current user is an admin
+	if isAdmin(ctx) {
+		log.Debug("checkUserPermissions> %s read/write access granted to %s because is admin", getAPIConsumer(ctx).ID, u.ID)
 		return nil
 	}
 

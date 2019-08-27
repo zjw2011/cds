@@ -36,17 +36,16 @@ type CurrentWorker struct {
 		}
 		apiEndpoint string
 		token       string
-		modelID     int64
+		model       string
 	}
 	currentJob struct {
-		wJob             *sdk.WorkflowNodeJobRun
-		newVariables     []sdk.Variable
-		pkey             string
-		gitsshPath       string
-		params           []sdk.Parameter
-		secrets          []sdk.Variable
-		workingDirectory string
-		context          context.Context
+		wJob         *sdk.WorkflowNodeJobRun
+		newVariables []sdk.Variable
+		pkey         string
+		gitsshPath   string
+		params       []sdk.Parameter
+		secrets      []sdk.Variable
+		context      context.Context
 	}
 	status struct {
 		Name   string `json:"name"`
@@ -58,10 +57,10 @@ type CurrentWorker struct {
 // BuiltInAction defines builtin action signature
 type BuiltInAction func(context.Context, workerruntime.Runtime, sdk.Action, []sdk.Parameter, []sdk.Variable) (sdk.Result, error)
 
-func (wk *CurrentWorker) Init(name, hatcheryName, apiEndpoint, token string, modelID int64, insecure bool, workspace afero.Fs) error {
+func (wk *CurrentWorker) Init(name, hatcheryName, apiEndpoint, token string, model string, insecure bool, workspace afero.Fs) error {
 	wk.status.Name = name
 	wk.basedir = workspace
-	wk.register.modelID = modelID
+	wk.register.model = model
 	wk.register.token = token
 	wk.register.apiEndpoint = apiEndpoint
 	wk.client = cdsclient.NewWorker(apiEndpoint, name, cdsclient.NewHTTPClient(time.Second*360, insecure))

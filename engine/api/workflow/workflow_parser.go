@@ -101,35 +101,56 @@ func ParseAndImport(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 	}
 
 	if w.FromRepository != "" {
-		if len(w.WorkflowData.Node.Hooks) == 0 {
-			// When you came from run workflow you have uuid
-			if opts.HookUUID != "" && oldW != nil {
-				oldHooks := oldW.WorkflowData.GetHooks()
-				if h, has := oldHooks[opts.HookUUID]; has {
-					w.WorkflowData.Node.Hooks = append(w.WorkflowData.Node.Hooks, sdk.NodeHook{
-						Ref:           h.Ref,
-						UUID:          h.UUID,
-						Config:        h.Config,
-						HookModelName: h.HookModelName,
-						HookModelID:   h.HookModelID,
-					})
+		// Get repowebhook from previous version of workflow
+		var oldRepoWebHook *sdk.NodeHook
+		if oldW != nil {
+			for i := range oldW.WorkflowData.Node.Hooks {
+				h := &oldW.WorkflowData.Node.Hooks[i]
+				if h.HookModelName == sdk.RepositoryWebHookModel.Name {
+					oldRepoWebHook = h
+					break
 				}
-			} else {
-				// If we are coming from a workflow init command, the opts.HookUUID is empty, and we have to take the old value
-				if opts.HookUUID == "" && oldW != nil &&
-					len(oldW.WorkflowData.Node.Hooks) == 1 &&
-					oldW.WorkflowData.Node.Hooks[0].HookModelName == sdk.RepositoryWebHookModel.Name {
-					opts.HookUUID = oldW.WorkflowData.Node.Hooks[0].UUID
-				}
-
-				w.WorkflowData.Node.Hooks = append(w.WorkflowData.Node.Hooks, sdk.NodeHook{
-					HookModelName: sdk.RepositoryWebHookModel.Name,
-					HookModelID:   sdk.RepositoryWebHookModel.ID,
-					Config:        sdk.RepositoryWebHookModel.DefaultConfig,
-					UUID:          opts.HookUUID,
-				})
 			}
 
+			if oldRepoWebHook != nil {
+				// Update current repo web hook if found
+				var currentRepoWebHook *sdk.NodeHook
+				// Get current webhook
+				for i := range w.WorkflowData.Node.Hooks {
+					h := &w.WorkflowData.Node.Hooks[i]
+					if h.HookModelName == sdk.RepositoryWebHookModel.Name {
+						h.UUID = oldRepoWebHook.UUID
+						h.Config = oldRepoWebHook.Config.Clone()
+						h.Config[sdk.HookConfigWorkflow] = sdk.WorkflowNodeHookConfigValue{Value: w.Name}
+						currentRepoWebHook = h
+						break
+					}
+				}
+
+				// If not found
+				if currentRepoWebHook == nil {
+					h := sdk.NodeHook{
+						UUID:          oldRepoWebHook.UUID,
+						HookModelName: oldRepoWebHook.HookModelName,
+						Config:        oldRepoWebHook.Config.Clone(),
+						Ref:           oldRepoWebHook.Ref,
+						HookModelID:   oldRepoWebHook.HookModelID,
+					}
+					h.Config[sdk.HookConfigWorkflow] = sdk.WorkflowNodeHookConfigValue{Value: w.Name}
+					w.WorkflowData.Node.Hooks = append(w.WorkflowData.Node.Hooks, h)
+				}
+			}
+		}
+
+		// If there is no old workflow OR workflow existing on CDS does not have a repoWebhook,
+		// we have to create a new repo webhook
+		if oldW == nil || oldRepoWebHook == nil {
+			// Init new repo webhook
+			w.WorkflowData.Node.Hooks = append(w.WorkflowData.Node.Hooks, sdk.NodeHook{
+				HookModelName: sdk.RepositoryWebHookModel.Name,
+				HookModelID:   sdk.RepositoryWebHookModel.ID,
+				Config:        sdk.RepositoryWebHookModel.DefaultConfig.Clone(),
+			})
 			var err error
 			if w.WorkflowData.Node.Context.DefaultPayload, err = DefaultPayload(ctx, db, store, proj, w); err != nil {
 				return nil, nil, sdk.WrapError(err, "Unable to get default payload")

@@ -1,9 +1,9 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
 import { EventWorkflowNodeJobRunPayload } from 'app/model/event.model';
 import { PipelineStatus } from 'app/model/pipeline.model';
-import { User } from 'app/model/user.model';
+import { AuthentifiedUser } from 'app/model/user.model';
 import { WorkflowRunService } from 'app/service/workflow/run/workflow.run.service';
 import { PathItem } from 'app/shared/breadcrumb/breadcrumb.component';
 import { AutoUnsubscribe } from 'app/shared/decorator/autoUnsubscribe';
@@ -17,12 +17,14 @@ import { finalize } from 'rxjs/operators';
 @Component({
     selector: 'app-queue',
     templateUrl: './queue.component.html',
-    styleUrls: ['./queue.component.scss']
+    styleUrls: ['./queue.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 @AutoUnsubscribe()
 export class QueueComponent {
     queueSubscription: Subscription;
     nodeJobRuns: Array<EventWorkflowNodeJobRunPayload> = [];
+    user: AuthentifiedUser;
     parametersMaps: Array<{}> = [];
     requirementsList: Array<string> = [];
     bookedOrBuildingByList: Array<string> = [];
@@ -30,13 +32,13 @@ export class QueueComponent {
     statusOptions: Array<string> = [PipelineStatus.WAITING, PipelineStatus.BUILDING];
     status: Array<string>;
     path: Array<PathItem>;
-    user: User;
 
     constructor(
         private _store: Store,
         private _wfRunService: WorkflowRunService,
         private _toast: ToastService,
-        private _translate: TranslateService
+        private _translate: TranslateService,
+        private _cd: ChangeDetectorRef
     ) {
         this.loading = true;
         this.status = [this.statusOptions[0]];
@@ -49,7 +51,7 @@ export class QueueComponent {
                 this.requirementsList = [];
                 this.bookedOrBuildingByList = [];
                 this.parametersMaps = this.nodeJobRuns.map((nj) => {
-                    if (this.user.admin && nj.Requirements) {
+                    if (this.user.isAdmin() && nj.Requirements) {
                         let requirements = nj.Requirements
                             .reduce((reqs, req) => `type: ${req.Type}, value: ${req.Value}; ${reqs}`, '');
                         this.requirementsList.push(requirements);
@@ -87,6 +89,14 @@ export class QueueComponent {
         this._store.dispatch(new GetQueue({ status: (this.status.length > 0 ? this.status : this.statusOptions)}));
     }
 
+    getQueueWorkerParams(): any {
+        return {
+            'user': this._store.selectSnapshot(AuthenticationState.user),
+            // 'session': this._authStore.getSessionToken(),
+            'api': '/cdsapi',
+            'status': this.status.length > 0 ? this.status : this.statusOptions
+        };
+    }
 
     stopNode(index: number) {
         let parameters = this.parametersMaps[index];
@@ -96,7 +106,10 @@ export class QueueComponent {
             parameters['cds.workflow'],
             parseInt(parameters['cds.run.number'], 10),
             parseInt(parameters['cds.node.id'], 10)
-        ).pipe(finalize(() => this.nodeJobRuns[index].updating = false))
+        ).pipe(finalize(() => {
+            this.nodeJobRuns[index].updating = false;
+            this._cd.markForCheck();
+        }))
             .subscribe(() => this._toast.success('', this._translate.instant('pipeline_stop')))
     }
 }

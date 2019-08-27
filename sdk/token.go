@@ -7,23 +7,37 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/pkg/errors"
-
-	"github.com/ovh/cds/sdk/log"
 )
 
 // AuthDriver interface.
 type AuthDriver interface {
 	GetManifest() AuthDriverManifest
 	GetSessionDuration() time.Duration
-	GetSigninURI(state string) string
 	CheckSigninRequest(AuthConsumerSigninRequest) error
 	GetUserInfo(AuthConsumerSigninRequest) (AuthDriverUserInfo, error)
+}
+
+type AuthDriverWithRedirect interface {
+	AuthDriver
+	GetSigninURI(AuthSigninConsumerToken) (AuthDriverSigningRedirect, error)
+}
+
+type AuthDriverWithSigninStateToken interface {
+	AuthDriver
+	CheckSigninStateToken(AuthConsumerSigninRequest) error
+}
+
+type AuthDriverSigningRedirect struct {
+	Method      string            `json:"method"`
+	URL         string            `json:"url"`
+	Body        map[string]string `json:"body"`
+	ContentType string            `json:"content_type"`
 }
 
 // AuthDriverManifest struct discribe a auth driver.
 type AuthDriverManifest struct {
 	Type           AuthConsumerType `json:"type"`
-	SignupDisabled bool             `json:"signup_disabled,omitempty"`
+	SignupDisabled bool             `json:"signup_disabled"`
 }
 
 // AuthConsumerScope alias type for string.
@@ -114,6 +128,7 @@ type AuthDriverUserInfo struct {
 	Username   string
 	Fullname   string
 	Email      string
+	MFA        bool
 }
 
 // AuthConsumerType constant to identify what is the driver used to create a consumer.
@@ -127,21 +142,14 @@ const (
 	ConsumerCorporateSSO AuthConsumerType = "corporate-sso"
 	ConsumerGithub       AuthConsumerType = "github"
 	ConsumerGitlab       AuthConsumerType = "gitlab"
+	ConsumerTest         AuthConsumerType = "futurama"
+	ConsumerTest2        AuthConsumerType = "planet-express"
 )
 
 // IsValid returns validity of given auth consumer type.
 func (t AuthConsumerType) IsValid() bool {
 	switch t {
-	case ConsumerBuiltin, ConsumerLocal, ConsumerLDAP, ConsumerCorporateSSO, ConsumerGithub, ConsumerGitlab:
-		return true
-	}
-	return false
-}
-
-// IsValidExternal returns validity of given auth consumer type.
-func (t AuthConsumerType) IsValidExternal() bool {
-	switch t {
-	case ConsumerLDAP, ConsumerCorporateSSO, ConsumerGithub, ConsumerGitlab:
+	case ConsumerBuiltin, ConsumerLocal, ConsumerLDAP, ConsumerCorporateSSO, ConsumerGithub, ConsumerGitlab, ConsumerTest, ConsumerTest2:
 		return true
 	}
 	return false
@@ -208,7 +216,6 @@ func (c AuthConsumer) GetGroupIDs() []int64 {
 
 func (c AuthConsumer) Admin() bool {
 	admin := c.AuthentifiedUser.Admin()
-	log.Debug("AuthConsumer.Admin> consumer on behalf of user %s is admin: %t", c.AuthentifiedUser.GetFullname(), admin)
 	return admin
 }
 
@@ -244,6 +251,7 @@ type AuthSession struct {
 	Created    time.Time              `json:"created" cli:"created" db:"created"`
 	GroupIDs   Int64Slice             `json:"group_ids" cli:"group_ids" db:"group_ids"`
 	Scopes     AuthConsumerScopeSlice `json:"scopes" cli:"scopes" db:"scopes"`
+	MFA        bool                   `json:"mfa" cli:"mfa" db:"mfa"`
 	// aggregates
 	Consumer *AuthConsumer `json:"consumer,omitempty" db:"-"`
 	Groups   []Group       `json:"groups,omitempty" db:"-"`
@@ -296,4 +304,15 @@ type Token struct {
 	Creator     string     `json:"creator" cli:"creator"`
 	Expiration  Expiration `json:"expiration" cli:"expiration"`
 	Created     time.Time  `json:"created" cli:"created"`
+}
+
+const AuthSigninConsumerTokenDuration time.Duration = time.Minute * 5
+
+// AuthSigninConsumerToken discribes the payload for a signin state token.
+type AuthSigninConsumerToken struct {
+	Origin            string `json:"origin"`
+	RedirectURI       string `json:"redirectURI"`
+	IssuedAt          int64  `json:"iat"`
+	RequireMFA        bool   `json:"requireMFA"`
+	IsFirstConnection bool   `json:"is_first_connection"`
 }

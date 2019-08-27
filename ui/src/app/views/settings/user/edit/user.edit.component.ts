@@ -1,25 +1,42 @@
-import { Component, OnInit, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit, ViewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
-import { AuthConsumer, AuthDriverManifest, AuthSession } from 'app/model/authentication.model';
+import { AuthConsumer, AuthDriverManifest, AuthDriverManifests, AuthSession } from 'app/model/authentication.model';
+import { Group } from 'app/model/group.model';
+import { AuthentifiedUser, UserContact } from 'app/model/user.model';
 import { AuthenticationService } from 'app/service/services.module';
+import { UserService } from 'app/service/user/user.service';
+import { PathItem } from 'app/shared/breadcrumb/breadcrumb.component';
 import { Item } from 'app/shared/menu/menu.component';
 import { Column, ColumnType, Filter } from 'app/shared/table/data-table.component';
+import { ToastService } from 'app/shared/toast/ToastService';
 import { AuthenticationState } from 'app/store/authentication.state';
 import { forkJoin } from 'rxjs/internal/observable/forkJoin';
 import { finalize } from 'rxjs/operators/finalize';
-import { Group } from '../../../../model/group.model';
-import { User, UserContact } from '../../../../model/user.model';
-import { UserService } from '../../../../service/user/user.service';
-import { PathItem } from '../../../../shared/breadcrumb/breadcrumb.component';
-import { ConsumerCreateModalComponent } from '../consumer-create-modal/consumer-create-modal.component';
-import { ConsumerDetailsModalComponent } from '../consumer-details-modal/consumer-details-modal.component';
+import { CloseEventType, ConsumerCreateModalComponent } from '../consumer-create-modal/consumer-create-modal.component';
+import {
+    CloseEvent,
+    CloseEventType as DetailsCloseEventType,
+    ConsumerDetailsModalComponent
+} from '../consumer-details-modal/consumer-details-modal.component';
+
+const defaultMenuItems = [<Item>{
+    translate: 'user_profile_btn',
+    key: 'profile',
+    default: true
+}, <Item>{
+    translate: 'user_groups_btn',
+    key: 'groups'
+}];
+
+const usernamePattern: RegExp = new RegExp('^[a-zA-Z0-9._-]{1,}$');
 
 @Component({
     selector: 'app-user-edit',
     templateUrl: './user.edit.html',
-    styleUrls: ['./user.edit.scss']
+    styleUrls: ['./user.edit.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class UserEditComponent implements OnInit {
     @ViewChild('consumerDetailsModal', { static: false })
@@ -31,16 +48,15 @@ export class UserEditComponent implements OnInit {
     loading = false;
     deleteLoading = false;
     groupsAdmin: Array<Group>;
-    // private usernamePattern: RegExp = new RegExp('^[a-zA-Z0-9._-]{1,}$');
     userPatternError = false;
-
     username: string;
-    currentUser: User;
+    currentUser: AuthentifiedUser;
+    editable: boolean;
     path: Array<PathItem>;
-    items: Array<Item>;
+    menuItems: Array<Item>;
     selectedItem: Item;
     loadingUser: boolean;
-    user: User;
+    user: AuthentifiedUser;
     columnsGroups: Array<Column<Group>>;
     loadingGroups = false;
     groups: Array<Group>;
@@ -58,6 +74,7 @@ export class UserEditComponent implements OnInit {
     columnsSessions: Array<Column<AuthSession>>;
     filterSessions: Filter<AuthSession>;
     sessions: Array<AuthSession>;
+    loadingLocalReset: boolean;
 
     constructor(
         private _authenticationService: AuthenticationService,
@@ -65,29 +82,24 @@ export class UserEditComponent implements OnInit {
         private _translate: TranslateService,
         private _route: ActivatedRoute,
         private _router: Router,
-        private _store: Store
+        private _store: Store,
+        private _toast: ToastService,
+        private _cd: ChangeDetectorRef
     ) {
         this.currentUser = this._store.selectSnapshot(AuthenticationState.user);
 
-        this.items = [<Item>{
-            translate: 'user_profile_btn',
-            key: 'profile',
-            default: true
-        }, <Item>{
-            translate: 'user_groups_btn',
-            key: 'groups'
-        }, <Item>{
-            translate: 'user_contacts_btn',
-            key: 'contacts'
-        }, <Item>{
-            translate: 'user_authentication_btn',
-            key: 'authentication'
-        }];
+        this.menuItems = [].concat(defaultMenuItems);
 
         this.columnsGroups = [
             <Column<Group>>{
+                type: ColumnType.ROUTER_LINK,
                 name: 'common_name',
-                selector: (g: Group) => g.name
+                selector: (g: Group) => {
+                    return {
+                        link: '/settings/group/' + g.name,
+                        value: g.name
+                    };
+                }
             },
             <Column<Group>>{
                 name: 'user_group_role',
@@ -128,7 +140,9 @@ export class UserEditComponent implements OnInit {
             return (c: AuthConsumer) => {
                 return c.name.toLowerCase().indexOf(lowerFilter) !== -1 ||
                     c.description.toLowerCase().indexOf(lowerFilter) !== -1 ||
-                    c.scopes.join(' ').toLowerCase().indexOf(lowerFilter) !== -1;
+                    c.scopes.join(' ').toLowerCase().indexOf(lowerFilter) !== -1 ||
+                    (c.groups && c.groups.map(g => g.name).join(' ').toLowerCase().indexOf(lowerFilter) !== -1) ||
+                    (!c.groups && lowerFilter === '*');
             }
         };
 
@@ -187,8 +201,44 @@ export class UserEditComponent implements OnInit {
 
         this.columnsSessions = [
             <Column<AuthSession>>{
+                type: ColumnType.TEXT_ICONS,
                 name: 'user_auth_consumer',
-                selector: (s: AuthSession) => s.consumer.name + ' (' + s.consumer_id + ')'
+                selector: (s: AuthSession) => {
+                    let icons = [];
+
+                    if (this.mConsumers && this.mConsumers[s.consumer_id]) {
+                        let consumer = this.mConsumers[s.consumer_id];
+
+                        let icon = {
+                            label: `ID: ${s.consumer_id}`,
+                            title: `ID: ${s.consumer_id}`
+                        };
+                        switch (consumer.type) {
+                            case 'builtin':
+                                icon['class'] = ['info', 'circle', 'icon', 'link'];
+                                break;
+                            case 'local':
+                                icon['class'] = ['lock', 'icon'];
+                                break;
+                            case 'ldap':
+                                icon['class'] = ['address', 'book', 'icon'];
+                                break;
+                            case 'corporate-sso':
+                                icon['class'] = ['shield', 'alternate', 'icon'];
+                                break;
+                            default:
+                                icon['class'] = [consumer.type, 'icon'];
+                                break;
+                        }
+
+                        icons.push(icon);
+                    }
+
+                    return {
+                        value: s.consumer.name,
+                        icons
+                    };
+                }
             },
             <Column<AuthSession>>{
                 type: ColumnType.TEXT_LABELS,
@@ -238,9 +288,28 @@ export class UserEditComponent implements OnInit {
         });
     }
 
-    clickConsumerDetails(c: AuthConsumer): void {
-        this.selectedConsumer = c;
+    clickConsumerDetails(selected: AuthConsumer): void {
+        this.selectedConsumer = selected;
+
+        // calculate children for selected consumer
+        this.selectedConsumer.children = this.consumers.filter(c => c.parent_id === this.selectedConsumer.id);
+        this.selectedConsumer.sessions = this.sessions.filter(s => s.consumer_id === this.selectedConsumer.id);
+
+        this._cd.detectChanges(); // manually ask for detect changes to allow modal data to be set before opening
         this.consumerDetailsModal.show();
+    }
+
+    clickConsumerLocalReset(): void {
+        this.loadingLocalReset = true;
+        this._cd.markForCheck();
+        this._authenticationService.localAskReset()
+            .pipe(finalize(() => {
+                this.loadingLocalReset = false;
+                this._cd.markForCheck();
+            }))
+            .subscribe(() => {
+                this._toast.success('', this._translate.instant('auth_ask_reset_success'));
+            });
     }
 
     clickConsumerSignin(consumerType: string): void {
@@ -267,40 +336,48 @@ export class UserEditComponent implements OnInit {
         }
     }
 
-    clickDeleteButton(): void {
-        // this.deleteLoading = true;
-        // this._userService.deleteUser(this.currentUser.username).subscribe(wm => {
-        //     this.deleteLoading = false;
-        //     this._toast.success('', this._translate.instant('user_deleted'));
-        //     this._router.navigate(['../'], { relativeTo: this._route });
-        // }, () => {
-        //     this.deleteLoading = false;
-        // });
+    clickDelete(): void {
+        this.deleteLoading = true;
+        this._cd.markForCheck();
+        this._userService.delete(this.username)
+            .pipe(finalize(() => {
+                this.deleteLoading = false;
+                this._cd.markForCheck();
+            }))
+            .subscribe(_ => {
+                this._toast.success('', this._translate.instant('user_deleted'));
+                this._router.navigate(['../'], { relativeTo: this._route });
+            });
     }
 
-    clickSaveButton(): void {
-        // if (!this.user.username) {
-        //     return;
-        // }
-        //
-        // if (!this.usernamePattern.test(this.user.username)) {
-        //     this.userPatternError = true;
-        //     return;
-        // }
+    clickSave(): void {
+        this.userPatternError = false;
+        if (!this.user.username || !this.user.fullname) {
+            return;
+        }
+        if (!usernamePattern.test(this.user.username)) {
+            this.userPatternError = true;
+            this._cd.markForCheck();
+            return;
+        }
 
-        // this.loading = true;
-        // if (this.user.id > 0) {
-        //    this._userService.updateUser(this.username, this.user).subscribe(wm => {
-        //        this.loading = false;
-        //        this._toast.success('', this._translate.instant('user_saved'));
-        //        this._router.navigate(['/settings', 'user', this.user.username], { relativeTo: this._route });
-        //    }, () => {
-        //        this.loading = false;
-        //    });
-        // }
+        this.loading = true;
+        this._cd.markForCheck();
+        this._userService.update(this.username, this.user)
+            .pipe(finalize(() => {
+                this.loading = false;
+                this._cd.markForCheck();
+            }))
+            .subscribe(u => {
+                this._toast.success('', this._translate.instant('user_saved'));
+                this.user = u;
+                this.setDataFromUser();
+                this.updatePath();
+                this._router.navigate(['/settings', 'user', this.user.username], { relativeTo: this._route });
+            });
     }
 
-    updatePath() {
+    updatePath(): void {
         this.path = [<PathItem>{
             translate: 'common_settings'
         }, <PathItem>{
@@ -308,11 +385,11 @@ export class UserEditComponent implements OnInit {
             routerLink: ['/', 'settings', 'user']
         }, <PathItem>{
             text: this.user.username,
-            routerLink: ['/', 'settings', 'user', this.currentUser.username]
+            routerLink: ['/', 'settings', 'user', this.user.username]
         }];
     }
 
-    selectItem(item: Item): void {
+    selectMenuItem(item: Item): void {
         switch (item.key) {
             case 'groups':
                 this.getGroups();
@@ -325,22 +402,48 @@ export class UserEditComponent implements OnInit {
                 break;
         }
         this.selectedItem = item;
+        this._cd.markForCheck();
     }
 
     getUser(): void {
         this.loadingUser = true;
-        this._userService.getUser(this.username)
-            .pipe(finalize(() => this.loadingUser = false))
+        this._cd.markForCheck();
+        this._userService.get(this.username)
+            .pipe(finalize(() => {
+                this.loadingUser = false;
+                this._cd.markForCheck();
+            }))
             .subscribe(u => {
                 this.user = u;
+                this.setDataFromUser();
                 this.updatePath();
             });
     }
 
+    setDataFromUser(): void {
+        this.editable = this.user.id === this.currentUser.id || this.currentUser.isAdmin();
+
+        if (this.user.id === this.currentUser.id || this.currentUser.isMaintainer()) {
+            this.menuItems = defaultMenuItems.concat([<Item>{
+                translate: 'user_contacts_btn',
+                key: 'contacts'
+            }, <Item>{
+                translate: 'user_authentication_btn',
+                key: 'authentication'
+            }]);
+        } else {
+            this.menuItems = [].concat(defaultMenuItems);
+        }
+    }
+
     getGroups(): void {
         this.loadingGroups = true;
-        this._userService.getGroups(this.currentUser.username)
-            .pipe(finalize(() => this.loadingGroups = false))
+        this._cd.markForCheck();
+        this._userService.getGroups(this.username)
+            .pipe(finalize(() => {
+                this.loadingGroups = false;
+                this._cd.markForCheck();
+            }))
             .subscribe((gs) => {
                 this.groups = gs;
             });
@@ -348,8 +451,12 @@ export class UserEditComponent implements OnInit {
 
     getContacts(): void {
         this.loadingContacts = true;
-        this._userService.getContacts(this.currentUser.username)
-            .pipe(finalize(() => this.loadingContacts = false))
+        this._cd.markForCheck();
+        this._userService.getContacts(this.username)
+            .pipe(finalize(() => {
+                this.loadingContacts = false;
+                this._cd.markForCheck();
+            }))
             .subscribe((cs) => {
                 this.contacts = cs;
             });
@@ -357,14 +464,18 @@ export class UserEditComponent implements OnInit {
 
     getAuthData(): void {
         this.loadingAuthData = true;
-        forkJoin<Array<AuthDriverManifest>, Array<AuthConsumer>, Array<AuthSession>>(
+        this._cd.markForCheck();
+        forkJoin<AuthDriverManifests, Array<AuthConsumer>, Array<AuthSession>>(
             this._authenticationService.getDrivers(),
-            this._userService.getConsumers(this.currentUser.username),
-            this._userService.getSessions(this.currentUser.username)
+            this._userService.getConsumers(this.username),
+            this._userService.getSessions(this.username)
         )
-            .pipe(finalize(() => this.loadingAuthData = false))
+            .pipe(finalize(() => {
+                this.loadingAuthData = false;
+                this._cd.markForCheck();
+            }))
             .subscribe(res => {
-                this.drivers = res[0].filter(m => m.type !== 'builtin').sort((a, b) => {
+                this.drivers = res[0].manifests.filter(m => m.type !== 'builtin').sort((a, b) => {
                     if (a.type === 'local') {
                         return -1;
                     }
@@ -395,7 +506,18 @@ export class UserEditComponent implements OnInit {
             });
     }
 
-    modalClose() {
+    modalCreateClose(eventType: CloseEventType) {
+        if (eventType === CloseEventType.CREATED) {
+            this.getAuthData();
+        }
+    }
+
+    modalDetailsClose(event: CloseEvent) {
         this.selectedConsumer = null;
+        this._cd.markForCheck();
+
+        if (event.type === DetailsCloseEventType.CHILD_DETAILS) {
+            this.clickConsumerDetails(event.payload);
+        }
     }
 }

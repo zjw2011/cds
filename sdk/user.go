@@ -21,7 +21,7 @@ type User struct {
 	Favorites []Favorite `json:"favorites" yaml:"favorites"`
 	// aggregated
 	Admin      bool `json:"admin,omitempty" yaml:"admin,omitempty" cli:"admin"`
-	GroupAdmin bool `json:"group_admin,omitempty" yaml:"group_admin,omitempty" cli:"group_admin"`
+	GroupAdmin bool `json:"group_admin,omitempty" yaml:"group_admin,omitempty"`
 }
 
 // Value returns driver.Value from user.
@@ -39,21 +39,24 @@ func (u *User) Scan(src interface{}) error {
 	return WrapError(json.Unmarshal([]byte(source), u), "cannot unmarshal User")
 }
 
+// Users type provides method on user list.
+type Users []User
+
+// ToMapByID returns a map of users indexed by their ids.
+func (u Users) ToMapByID() map[int64]User {
+	mUsers := make(map[int64]User, len(u))
+	for i := range u {
+		mUsers[u[i].ID] = u[i]
+	}
+	return mUsers
+}
+
 // User rings.
 const (
 	UserRingAdmin      = "ADMIN"
 	UserRingMaintainer = "MAINTAINER"
 	UserRingUser       = "USER"
 )
-
-// AuthentifiedUsersToIDs returns ids for given authentified user list.
-func AuthentifiedUsersToIDs(users []*AuthentifiedUser) []string {
-	ids := make([]string, len(users))
-	for i := range users {
-		ids[i] = (users)[i].ID
-	}
-	return ids
-}
 
 type Identifiable interface {
 	GetConsumerName() string
@@ -62,6 +65,7 @@ type Identifiable interface {
 	GetEmail() string
 }
 
+// AuthentifiedUser struct contains all information about a cds user.
 type AuthentifiedUser struct {
 	ID       string    `json:"id" yaml:"id" cli:"id,key" db:"id"`
 	Created  time.Time `json:"created" yaml:"created" cli:"created" db:"created"`
@@ -69,18 +73,34 @@ type AuthentifiedUser struct {
 	Fullname string    `json:"fullname" yaml:"fullname,omitempty" cli:"fullname" db:"fullname"`
 	Ring     string    `json:"ring" yaml:"ring,omitempty" cli:"ring" db:"ring"`
 	// aggregates
-	Contacts      UserContacts `json:"contacts" yaml:"contacts" db:"-"`
-	OldUserStruct *User        `json:"old_user_struct" yaml:"old_user_struct" db:"-"`
+	Contacts      UserContacts `json:"-" yaml:"-" db:"-"`
+	OldUserStruct *User        `json:"-" yaml:"-" db:"-"`
+}
+
+// IsValid returns an error if given user's infos are not valid.
+func (u AuthentifiedUser) IsValid() error {
+	if u.Username == "" || u.Username == "me" {
+		return NewErrorFrom(ErrWrongRequest, "invalid given username")
+	}
+	if u.Fullname == "" {
+		return NewErrorFrom(ErrWrongRequest, "invalid given fullname")
+	}
+
+	switch u.Ring {
+	case UserRingAdmin, UserRingMaintainer, UserRingUser:
+		return nil
+	}
+	return NewErrorFrom(ErrWrongRequest, "invalid given ring value")
 }
 
 // Value returns driver.Value from workflow template request.
-func (w AuthentifiedUser) Value() (driver.Value, error) {
-	j, err := json.Marshal(w)
+func (u AuthentifiedUser) Value() (driver.Value, error) {
+	j, err := json.Marshal(u)
 	return j, WrapError(err, "cannot marshal AuthentifiedUser")
 }
 
 // Scan workflow template request.
-func (w *AuthentifiedUser) Scan(src interface{}) error {
+func (u *AuthentifiedUser) Scan(src interface{}) error {
 	if src == nil {
 		return nil
 	}
@@ -88,9 +108,10 @@ func (w *AuthentifiedUser) Scan(src interface{}) error {
 	if !ok {
 		return WithStack(fmt.Errorf("type assertion .([]byte) failed (%T)", src))
 	}
-	return WrapError(json.Unmarshal(source, w), "cannot unmarshal AuthentifiedUser")
+	return WrapError(json.Unmarshal(source, u), "cannot unmarshal AuthentifiedUser")
 }
 
+// GetGroupIDs returns groups ids for user based on old user.
 func (u AuthentifiedUser) GetGroupIDs() []int64 {
 	if u.OldUserStruct == nil {
 		return nil
@@ -126,6 +147,27 @@ func (u AuthentifiedUser) GetEmail() string {
 	byEmails := u.Contacts.Filter(UserContactTypeEmail)
 	primaryEmailAdress := byEmails.Primary()
 	return primaryEmailAdress.Value
+}
+
+// AuthentifiedUsers provides func for authentified user list.
+type AuthentifiedUsers []AuthentifiedUser
+
+// ToMapByID returns a map of authentified users indexed by ids.
+func (a AuthentifiedUsers) ToMapByID() map[string]AuthentifiedUser {
+	m := make(map[string]AuthentifiedUser, len(a))
+	for i := range a {
+		m[a[i].ID] = a[i]
+	}
+	return m
+}
+
+// AuthentifiedUsersToIDs returns ids for given authentified user list.
+func AuthentifiedUsersToIDs(users []*AuthentifiedUser) []string {
+	ids := make([]string, len(users))
+	for i := range users {
+		ids[i] = (users)[i].ID
+	}
+	return ids
 }
 
 // UserContact struct

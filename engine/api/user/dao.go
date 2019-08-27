@@ -80,13 +80,23 @@ func get(ctx context.Context, db gorp.SqlExecutor, q gorpmapping.Query, opts ...
 }
 
 // LoadAll returns all users from database.
-func LoadAll(ctx context.Context, db gorp.SqlExecutor, opts ...LoadOptionFunc) ([]sdk.AuthentifiedUser, error) {
+func LoadAll(ctx context.Context, db gorp.SqlExecutor, opts ...LoadOptionFunc) (sdk.AuthentifiedUsers, error) {
 	query := gorpmapping.NewQuery("SELECT * FROM authentified_user")
 	return getAll(ctx, db, query, opts...)
 }
 
+// LoadAllByRing returns users from database for given ids.
+func LoadAllByRing(ctx context.Context, db gorp.SqlExecutor, ring string, opts ...LoadOptionFunc) (sdk.AuthentifiedUsers, error) {
+	query := gorpmapping.NewQuery(`
+    SELECT *
+    FROM authentified_user
+    WHERE ring = $1
+  `).Args(ring)
+	return getAll(ctx, db, query, opts...)
+}
+
 // LoadAllByIDs returns users from database for given ids.
-func LoadAllByIDs(ctx context.Context, db gorp.SqlExecutor, ids []string, opts ...LoadOptionFunc) ([]sdk.AuthentifiedUser, error) {
+func LoadAllByIDs(ctx context.Context, db gorp.SqlExecutor, ids []string, opts ...LoadOptionFunc) (sdk.AuthentifiedUsers, error) {
 	query := gorpmapping.NewQuery(`
     SELECT *
     FROM authentified_user
@@ -107,9 +117,9 @@ func LoadByUsername(ctx context.Context, db gorp.SqlExecutor, username string, o
 	return get(ctx, db, query, opts...)
 }
 
-// Count users in database.
-func Count(db gorp.SqlExecutor) (int64, error) {
-	count, err := db.SelectInt("SELECT COUNT(id) FROM authentified_user")
+// CountAdmin admin users in database.
+func CountAdmin(db gorp.SqlExecutor) (int64, error) {
+	count, err := db.SelectInt("SELECT COUNT(id) FROM authentified_user WHERE ring = 'ADMIN'")
 	if err != nil {
 		return 0, sdk.WithStack(err)
 	}
@@ -126,7 +136,7 @@ func Insert(db gorp.SqlExecutor, au *sdk.AuthentifiedUser) error {
 	}
 	*au = u.AuthentifiedUser
 
-	// TODO: refactor this when authenticatedUser.group will replace user.group
+	// TODO refactor this when authenticatedUser will replace user
 	oldUser := &sdk.User{
 		Admin:    u.Ring == sdk.UserRingAdmin,
 		Email:    "no-reply-" + u.Username + "@corp.ovh.com",
@@ -137,18 +147,16 @@ func Insert(db gorp.SqlExecutor, au *sdk.AuthentifiedUser) error {
 	if err := insertDeprecatedUser(db, oldUser); err != nil {
 		return sdk.WrapError(err, "unable to insert old user for authenticated_user.id=%s", u.ID)
 	}
-	query := "INSERT INTO authentified_user_migration(authentified_user_id, user_id) VALUES($1, $2)"
-	if _, err := db.Exec(query, u.ID, oldUser.ID); err != nil {
-		return sdk.WrapError(err, "unable to insert into table authentified_user_migration")
-	}
-
-	return nil
+	return insertUserMigration(db, &MigrationUser{
+		AuthentifiedUserID: u.ID,
+		UserID:             oldUser.ID,
+	})
 }
 
 // Update a user in database.
 func Update(db gorp.SqlExecutor, au *sdk.AuthentifiedUser) error {
 	u := authentifiedUser{AuthentifiedUser: *au}
-	if err := gorpmapping.UpdatetAndSign(db, &u); err != nil {
+	if err := gorpmapping.UpdateAndSign(db, &u); err != nil {
 		return sdk.WrapError(err, "unable to update authentified user with id: %s", au.ID)
 	}
 	*au = u.AuthentifiedUser
@@ -157,6 +165,21 @@ func Update(db gorp.SqlExecutor, au *sdk.AuthentifiedUser) error {
 
 // DeleteByID a user in database.
 func DeleteByID(db gorp.SqlExecutor, id string) error {
-	_, err := db.Exec("DELETE FROM authentified_user WHERE id = $1", id)
+	migrations, err := LoadMigrationUsersByUserIDs(context.Background(), db, []string{id})
+	if err != nil {
+		return err
+	}
+
+	for _, m := range migrations {
+		oldU, err := LoadDeprecatedUserWithoutAuthByID(context.Background(), db, m.UserID)
+		if err != nil {
+			return err
+		}
+		if err := DeleteUserWithDependencies(db, oldU); err != nil {
+			return err
+		}
+	}
+
+	_, err = db.Exec("DELETE FROM authentified_user WHERE id = $1", id)
 	return sdk.WithStack(err)
 }

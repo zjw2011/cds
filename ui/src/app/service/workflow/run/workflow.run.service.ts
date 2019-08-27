@@ -1,19 +1,18 @@
 import {HttpClient, HttpParams} from '@angular/common/http';
 import {Injectable} from '@angular/core';
 import { EventWorkflowNodeJobRunPayload } from 'app/model/event.model';
+import {Commit} from 'app/model/repositories.model';
 import { RequirementEventPayload } from 'app/model/requirement.model';
-import {Observable} from 'rxjs';
-import {map} from 'rxjs/operators';
-import {ServiceLog} from '../../../model/pipeline.model';
-import {Commit} from '../../../model/repositories.model';
-import {Workflow} from '../../../model/workflow.model';
+import {Workflow} from 'app/model/workflow.model';
 import {
     RunNumber,
     WorkflowNodeJobRun,
     WorkflowNodeRun,
     WorkflowRun,
     WorkflowRunRequest
-} from '../../../model/workflow.run.model';
+} from 'app/model/workflow.run.model';
+import {Observable} from 'rxjs';
+import {map} from 'rxjs/operators';
 
 @Injectable()
 export class WorkflowRunService {
@@ -128,25 +127,6 @@ export class WorkflowRunService {
      */
     stopWorkflowRun(key: string, workflowName: string, num: number): Observable<boolean> {
         return this._http.post('/project/' + key + '/workflows/' + workflowName + '/runs/' + num + '/stop', null).pipe(map(() => true));
-    }
-
-    /**
-     * Get workflow Node Run Job service logs
-     * @param {string} key Project unique key
-     * @param {string} workflowName Workflow name
-     * @param {number} num Number of the workflow run
-     * @param {number} id of the node run
-     * @param {number} id of the job node run
-     * @returns {Observable<Array<ServiceLog>>}
-     */
-    getWorkflowNodeRunServiceLogs(
-      key: string,
-      workflowName: string,
-      num: number,
-      nodeId: number,
-      jobId: number): Observable<Array<ServiceLog>> {
-        return this._http
-          .get<Array<ServiceLog>>(`/project/${key}/workflows/${workflowName}/runs/${num}/nodes/${nodeId}/job/${jobId}/log/service`);
     }
 
     /**

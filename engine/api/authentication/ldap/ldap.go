@@ -1,16 +1,25 @@
 package ldap
 
 import (
+	"bytes"
+	"crypto/tls"
+	"errors"
+	"fmt"
+	"strings"
+	"text/template"
 	"time"
 
 	ldap "gopkg.in/ldap.v2"
 
 	"github.com/ovh/cds/sdk"
+	"github.com/ovh/cds/sdk/log"
 )
 
-var _ sdk.AuthDriver = new(authDriver)
+var _ sdk.AuthDriver = new(AuthDriver)
 
-type authDriver struct {
+const errUserNotFound = "ldap::user not found"
+
+type AuthDriver struct {
 	signupDisabled bool
 	conf           Config
 	conn           *ldap.Conn
@@ -18,91 +27,45 @@ type authDriver struct {
 
 // Config handles all config to connect to the LDAP.
 type Config struct {
-	Host         string
-	Port         int
-	Base         string
-	DN           string
-	SSL          bool
-	UserFullname string
-	BindDN       string
-	BindPwd      string
+	Host            string // 192.168.1.32
+	Port            int    // 636
+	SSL             bool   // true
+	RootDN          string // dc=ejnserver,dc=fr
+	UserSearchBase  string // ou=people
+	UserSearch      string // uid={{.search}}
+	UserFullname    string // {{.givenName}} {{.sn}}
+	ManagerDN       string // cn=admin,dc=ejnserver,dc=fr
+	ManagerPassword string // SECRET_PASSWORD_MANAGER
 }
 
 // NewDriver returns a new ldap auth driver.
-func NewDriver(signupDisabled bool, cfg Config) sdk.AuthDriver {
-	return &authDriver{
+func NewDriver(signupDisabled bool, cfg Config) (sdk.AuthDriver, error) {
+	var d = AuthDriver{
 		signupDisabled: signupDisabled,
 		conf:           cfg,
 	}
+
+	if err := d.openLDAP(cfg); err != nil {
+		return nil, fmt.Errorf("unable to open LDAP connection to %s:%d : %v", cfg.Host, cfg.Port, err)
+	}
+
+	return d, nil
 }
 
-/*func (l *ldapDriver) CheckAuthentication(ctx context.Context, db gorp.SqlExecutor, r *http.Request) (*sdk.AuthentifiedUser, error) {
-	_, end := observability.Span(ctx, "ldapAuthentication.CheckAuthentication")
-	defer end()
-
-	vars := mux.Vars(r)
-	username := vars["username"]
-	password := vars["password"]
-
-	//Bind user
-	if err := l.Bind(username, password); err != nil {
-		return nil, sdk.WrapError(sdk.ErrUnauthorized, "LDAP bind failure: %v", err)
-	}
-
-	log.Debug("LDAP> Bind successful %s", username)
-
-	// Search user
-	search := fmt.Sprintf("(uid=%s)", username)
-	entry, errSearch := l.Search(search, "uid", "cn", "ou", "givenName", "sn", "mail")
-	if errSearch != nil && errSearch != errUserNotFound {
-		log.Warning("LDAP> Search error %s: %s", search, errSearch)
-		return nil, sdk.WrapError(sdk.ErrUnauthorized, "LDAP bind failure: %v", errSearch)
-	}
-
-	if len(entry) > 1 {
-		log.Error("LDAP> Search error %s: multiple values", search)
-		return nil, fmt.Errorf("LDAP Search error %s: multiple values", search)
-	}
-
-	u, err := user.LoadByUsername(ctx, db, username)
-	if err != nil {
-		return nil, err
-	}
-
-	//Execute template to compute fullname
-	//tmpl, err := template.New("userfullname").Parse(l.conf.UserFullname)
-	//if err != nil {
-	//	log.Error("LDAP> Error with user fullname template %s : %s", l.conf.UserFullname, err)
-	//	tmpl, _ = template.New("userfullname").Parse("{{.givenName}}")
-	//}
-	//bufFullname := new(bytes.Buffer)
-	//tmpl.Execute(bufFullname, entry[0].Attributes)
-	//
-	//u.Fullname = bufFullname.String()
-	//u.Email = entry[0].Attributes["mail"]
-
-	return u, nil
-}*/
-
-func (d authDriver) GetManifest() sdk.AuthDriverManifest {
+func (d AuthDriver) GetManifest() sdk.AuthDriverManifest {
 	return sdk.AuthDriverManifest{
 		Type:           sdk.ConsumerLDAP,
 		SignupDisabled: d.signupDisabled,
 	}
 }
 
-func (d authDriver) GetSigninURI(state string) string {
-	// TODO
-	return ""
-}
-
-func (d authDriver) GetSessionDuration() time.Duration {
+func (d AuthDriver) GetSessionDuration() time.Duration {
 	return time.Hour * 24 * 30 // 1 month session
 }
 
-func (d authDriver) CheckSigninRequest(req sdk.AuthConsumerSigninRequest) error {
-	if email, ok := req["email"]; !ok || email == "" {
-		return sdk.NewErrorFrom(sdk.ErrWrongRequest, "missing or invalid email for ldap signin")
+func (d AuthDriver) CheckSigninRequest(req sdk.AuthConsumerSigninRequest) error {
+	if bind, ok := req["bind"]; !ok || bind == "" {
+		return sdk.NewErrorFrom(sdk.ErrWrongRequest, "missing or invalid bind term for ldap signin")
 	}
 	if password, ok := req["password"]; !ok || password == "" {
 		return sdk.NewErrorFrom(sdk.ErrWrongRequest, "missing or invalid password for ldap signin")
@@ -110,29 +73,76 @@ func (d authDriver) CheckSigninRequest(req sdk.AuthConsumerSigninRequest) error 
 	return nil
 }
 
-/*func (l *ldapDriver) openLDAP() error {
-	address := fmt.Sprintf("%s:%d", l.conf.Host, l.conf.Port)
+func (d AuthDriver) GetUserInfo(req sdk.AuthConsumerSigninRequest) (sdk.AuthDriverUserInfo, error) {
+	var userInfo sdk.AuthDriverUserInfo
+	var bind = req["bind"]
+	var password = req["password"]
+
+	if err := d.bind(bind, password); err != nil {
+		return userInfo, sdk.NewError(sdk.ErrUnauthorized, err)
+	}
+
+	entry, err := d.search(bind, "uid", "dn", "cn", "ou", "givenName", "sn", "mail", "memberOf")
+	if err != nil && err.Error() != errUserNotFound {
+		return userInfo, sdk.NewError(sdk.ErrUnauthorized, err)
+	}
+
+	if len(entry) > 1 {
+		return userInfo, fmt.Errorf("LDAP Search error multiple values")
+	}
+
+	//If user doesn't exist and search was'nt successful => exist
+	if err != nil {
+		log.Warning("LDAP> Search error %s", err)
+		return userInfo, sdk.NewError(sdk.ErrUnauthorized, err)
+	}
+
+	//Execute template to compute fullname
+	tmpl, err := template.New("userfullname").Parse(d.conf.UserFullname)
+	if err != nil {
+		log.Error("LDAP> Error with user fullname template %s : %s", d.conf.UserFullname, err)
+		tmpl, _ = template.New("userfullname").Parse("{{.givenName}}")
+	}
+	bufFullname := new(bytes.Buffer)
+	if err := tmpl.Execute(bufFullname, entry[0].Attributes); err != nil {
+		return userInfo, sdk.WithStack(err)
+	}
+
+	userInfo.Fullname = bufFullname.String()
+	userInfo.Email = entry[0].Attributes["mail"]
+	userInfo.ExternalID = entry[0].Attributes["uid"]
+	userInfo.Username = req["bind"]
+
+	return userInfo, nil
+}
+
+func (d *AuthDriver) openLDAP(conf Config) error {
+	if d.conn != nil {
+		d.conn.Close()
+	}
+	var err error
+	d.conf = conf
+
+	address := fmt.Sprintf("%s:%d", d.conf.Host, d.conf.Port)
 
 	log.Info("Auth> Preparing connection to LDAP server: %s", address)
-	if !l.conf.SSL {
-		var err error
-		l.conn, err = ldap.Dial("tcp", address)
+	if !d.conf.SSL {
+		d.conn, err = ldap.Dial("tcp", address)
 		if err != nil {
 			log.Error("Auth> Cannot dial %s : %s", address, err)
 			return sdk.ErrLDAPConn
 		}
 
-		// Reconnect with TLS
-		err = l.conn.StartTLS(&tls.Config{InsecureSkipVerify: true})
+		//Reconnect with TLS
+		err = d.conn.StartTLS(&tls.Config{InsecureSkipVerify: true})
 		if err != nil {
 			log.Error("Auth> Cannot start TLS %s : %s", address, err)
 			return sdk.ErrLDAPConn
 		}
 	} else {
-		var err error
 		log.Info("Auth> Connecting to LDAP server")
-		l.conn, err = ldap.DialTLS("tcp", address, &tls.Config{
-			ServerName:         l.conf.Host,
+		d.conn, err = ldap.DialTLS("tcp", address, &tls.Config{
+			ServerName:         d.conf.Host,
 			InsecureSkipVerify: false,
 		})
 		if err != nil {
@@ -141,14 +151,14 @@ func (d authDriver) CheckSigninRequest(req sdk.AuthConsumerSigninRequest) error 
 		}
 	}
 
-	if l.conf.BindDN != "" {
-		log.Info("LDAP> Bind user %s", l.conf.BindDN)
-		if err := l.conn.Bind(l.conf.BindDN, l.conf.BindPwd); err != nil {
+	if d.conf.ManagerDN != "" {
+		log.Info("LDAP> bind manager %s", d.conf.ManagerDN)
+		if err := d.conn.Bind(d.conf.ManagerDN, d.conf.ManagerPassword); err != nil {
 			if shoudRetry(err) {
-				if err := l.openLDAP(); err != nil {
+				if err := d.openLDAP(d.conf); err != nil {
 					return err
 				}
-				if err := l.conn.Bind(l.conf.BindDN, l.conf.BindPwd); err != nil {
+				if err := d.conn.Bind(d.conf.ManagerDN, d.conf.ManagerPassword); err != nil {
 					return err
 				}
 			} else {
@@ -158,79 +168,62 @@ func (d authDriver) CheckSigninRequest(req sdk.AuthConsumerSigninRequest) error 
 	}
 
 	return nil
-}*/
+}
 
-//Bind binds
-/*func (l *ldapDriver) Bind(username, password string) error {
-	bindRequest := fmt.Sprintf(l.conf.DN, username)
-	bindRequest = strings.Replace(bindRequest, "{{.ldapBase}}", l.conf.Base, -1)
-	log.Debug("LDAP> Bind user %s", bindRequest)
+// bind binds
+func (d *AuthDriver) bind(term, password string) error {
+	bindRequest := strings.Replace(d.conf.UserSearch, "{0}", ldap.EscapeFilter(term), 1) + "," + d.conf.UserSearchBase + "," + d.conf.RootDN
+	log.Debug("LDAP> bind user %s", bindRequest)
 
-	if err := l.conn.Bind(bindRequest, password); err != nil {
-		if shoudRetry(err) {
-			err = l.openLDAP()
-			if err != nil {
-				return err
-			}
-			err = l.conn.Bind(bindRequest, password)
-			if err != nil {
-				return err
-			}
-		} else {
+	if err := d.conn.Bind(bindRequest, password); err != nil {
+		if !shoudRetry(err) {
+			return err
+		}
+		if err := d.openLDAP(d.conf); err != nil {
+			return err
+		}
+		if err := d.conn.Bind(bindRequest, password); err != nil {
 			return err
 		}
 	}
-
 	return nil
-}*/
+}
 
 //Search search
-/*func (l *ldapDriver) Search(filter string, attributes ...string) ([]Entry, error) {
-	attr := append(attributes, "dn")
+func (d *AuthDriver) search(term string, attributes ...string) ([]Entry, error) {
+	userSearch := strings.Replace(d.conf.UserSearch, "{0}", ldap.EscapeFilter(term), 1)
+	filter := fmt.Sprintf("(%s)", userSearch)
 
-	if l.conf.BindDN != "" {
-		log.Debug("LDAP> Bind user %s", l.conf.BindDN)
-		if err := l.conn.Bind(l.conf.BindDN, l.conf.BindPwd); err != nil {
-			if shoudRetry(err) {
-				if err := l.openLDAP(); err != nil {
-					return nil, err
-				}
-				if err := l.conn.Bind(l.conf.BindDN, l.conf.BindPwd); err != nil {
-					return nil, err
-				}
-			} else {
-				return nil, err
-			}
-		}
-	}
-
+	log.Debug("LDAP> Search user %s", filter)
 	// Search for the given username
 	searchRequest := ldap.NewSearchRequest(
-		l.conf.Base,
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		d.conf.RootDN,
+		ldap.ScopeWholeSubtree,
+		ldap.NeverDerefAliases,
+		1,
+		0,
+		false,
 		filter,
-		attr,
+		attributes,
 		nil,
 	)
 
-	sr, err := l.conn.Search(searchRequest)
+	sr, err := d.conn.Search(searchRequest)
 	if err != nil {
-		if shoudRetry(err) {
-			err = l.openLDAP()
-			if err != nil {
-				return nil, err
-			}
-			sr, err = l.conn.Search(searchRequest)
-			if err != nil {
-				return nil, err
-			}
-		} else {
+		if !shoudRetry(err) {
+			return nil, err
+		}
+		if err := d.openLDAP(d.conf); err != nil {
+			return nil, err
+		}
+		sr, err = d.conn.Search(searchRequest)
+		if err != nil {
 			return nil, err
 		}
 	}
 
 	if len(sr.Entries) < 1 {
-		return nil, errUserNotFound
+		return nil, errors.New(errUserNotFound)
 	}
 
 	entries := []Entry{}
@@ -239,15 +232,12 @@ func (d authDriver) CheckSigninRequest(req sdk.AuthConsumerSigninRequest) error 
 			DN:         e.DN,
 			Attributes: make(map[string]string),
 		}
-		for _, a := range attr {
+
+		for _, a := range attributes {
 			entry.Attributes[a] = e.GetAttributeValue(a)
 		}
 		entries = append(entries, entry)
 	}
 
 	return entries, nil
-}*/
-
-func (d authDriver) GetUserInfo(req sdk.AuthConsumerSigninRequest) (sdk.AuthDriverUserInfo, error) {
-	return sdk.AuthDriverUserInfo{}, sdk.WithStack(sdk.ErrNotImplemented)
 }

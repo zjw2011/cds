@@ -20,9 +20,9 @@ import (
 func TestLoadByNameAsAdmin(t *testing.T) {
 	db, cache, end := test.SetupPG(t, bootstrap.InitiliazeDB)
 	defer end()
-	event.Initialize(event.KafkaConfig{}, cache)
+	_ = event.Initialize(db, cache)
 	key := sdk.RandomString(10)
-	proj := assets.InsertTestProject(t, db, cache, key, key, nil)
+	proj := assets.InsertTestProject(t, db, cache, key, key)
 	app := sdk.Application{
 		Name: "my-app",
 	}
@@ -41,14 +41,14 @@ func TestLoadByNameAsUser(t *testing.T) {
 	db, cache, end := test.SetupPG(t, bootstrap.InitiliazeDB)
 	defer end()
 	key := sdk.RandomString(10)
-	proj := assets.InsertTestProject(t, db, cache, key, key, nil)
+	proj := assets.InsertTestProject(t, db, cache, key, key)
 	app := sdk.Application{
 		Name: "my-app",
 	}
 
 	test.NoError(t, application.Insert(db, cache, proj, &app))
 
-	_, _ = assets.InsertLambdaUser(db, &proj.ProjectGroups[0].Group)
+	_, _ = assets.InsertLambdaUser(t, db, &proj.ProjectGroups[0].Group)
 
 	actual, err := application.LoadByName(db, cache, key, "my-app")
 	assert.NoError(t, err)
@@ -62,7 +62,7 @@ func TestLoadByIDAsAdmin(t *testing.T) {
 	db, cache, end := test.SetupPG(t, bootstrap.InitiliazeDB)
 	defer end()
 	key := sdk.RandomString(10)
-	proj := assets.InsertTestProject(t, db, cache, key, key, nil)
+	proj := assets.InsertTestProject(t, db, cache, key, key)
 	app := sdk.Application{
 		Name: "my-app",
 	}
@@ -82,14 +82,14 @@ func TestLoadByIDAsUser(t *testing.T) {
 	defer end()
 	key := sdk.RandomString(10)
 
-	proj := assets.InsertTestProject(t, db, cache, key, key, nil)
+	proj := assets.InsertTestProject(t, db, cache, key, key)
 	app := sdk.Application{
 		Name: "my-app",
 	}
 
 	test.NoError(t, application.Insert(db, cache, proj, &app))
 
-	_, _ = assets.InsertLambdaUser(db, &proj.ProjectGroups[0].Group)
+	_, _ = assets.InsertLambdaUser(t, db, &proj.ProjectGroups[0].Group)
 
 	actual, err := application.LoadByID(db, cache, app.ID)
 	assert.NoError(t, err)
@@ -103,7 +103,7 @@ func TestLoadAllAsAdmin(t *testing.T) {
 	db, cache, end := test.SetupPG(t, bootstrap.InitiliazeDB)
 	defer end()
 	key := sdk.RandomString(10)
-	proj := assets.InsertTestProject(t, db, cache, key, key, nil)
+	proj := assets.InsertTestProject(t, db, cache, key, key)
 	app := sdk.Application{
 		Name: "my-app",
 		Metadata: sdk.Metadata{
@@ -136,7 +136,7 @@ func TestLoadAllAsUser(t *testing.T) {
 	db, cache, end := test.SetupPG(t, bootstrap.InitiliazeDB)
 	defer end()
 	key := sdk.RandomString(10)
-	proj := assets.InsertTestProject(t, db, cache, key, key, nil)
+	proj := assets.InsertTestProject(t, db, cache, key, key)
 	app := sdk.Application{
 		Name: "my-app",
 	}
@@ -148,7 +148,7 @@ func TestLoadAllAsUser(t *testing.T) {
 	test.NoError(t, application.Insert(db, cache, proj, &app))
 	test.NoError(t, application.Insert(db, cache, proj, &app2))
 
-	_, _ = assets.InsertLambdaUser(db, &proj.ProjectGroups[0].Group)
+	_, _ = assets.InsertLambdaUser(t, db, &proj.ProjectGroups[0].Group)
 
 	actual, err := application.LoadAll(db, cache, proj.Key)
 	test.NoError(t, err)
@@ -161,7 +161,7 @@ func TestLoadByWorkflowID(t *testing.T) {
 	defer end()
 	key := sdk.RandomString(10)
 
-	proj := assets.InsertTestProject(t, db, cache, key, key, nil)
+	proj := assets.InsertTestProject(t, db, cache, key, key)
 	app := sdk.Application{
 		Name:       "my-app",
 		ProjectKey: proj.Key,

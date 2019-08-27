@@ -23,9 +23,9 @@ import (
 func TestManualRun1(t *testing.T) {
 	db, cache, end := test.SetupPG(t, bootstrap.InitiliazeDB)
 	defer end()
-	u, _ := assets.InsertAdminUser(db)
+	u, _ := assets.InsertAdminUser(t, db)
 	key := sdk.RandomString(10)
-	proj := assets.InsertTestProject(t, db, cache, key, key, u)
+	proj := assets.InsertTestProject(t, db, cache, key, key)
 	ctx := context.Background()
 
 	//First pipeline
@@ -153,7 +153,7 @@ func TestManualRun1(t *testing.T) {
 	//TestLoadNodeJobRun
 	filter := workflow.NewQueueFilter()
 	filter.Rights = sdk.PermissionReadExecute
-	jobs, err := workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, append(sdk.GroupsToIDs(u.OldUserStruct.Groups), proj.ProjectGroups[0].Group.ID))
+	jobs, err := workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.Groups(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)).ToIDs())
 	test.NoError(t, err)
 	test.Equal(t, 2, len(jobs))
 
@@ -182,9 +182,9 @@ func TestManualRun1(t *testing.T) {
 func TestManualRun2(t *testing.T) {
 	db, cache, end := test.SetupPG(t, bootstrap.InitiliazeDB)
 	defer end()
-	u, _ := assets.InsertAdminUser(db)
+	u, _ := assets.InsertAdminUser(t, db)
 	key := sdk.RandomString(10)
-	proj := assets.InsertTestProject(t, db, cache, key, key, u)
+	proj := assets.InsertTestProject(t, db, cache, key, key)
 	ctx := context.Background()
 
 	//First pipeline
@@ -292,7 +292,7 @@ func TestManualRun2(t *testing.T) {
 
 	filter := workflow.NewQueueFilter()
 	filter.Rights = sdk.PermissionReadExecute
-	jobs, err := workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, append(sdk.GroupsToIDs(u.OldUserStruct.Groups), proj.ProjectGroups[0].Group.ID))
+	jobs, err := workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.Groups(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)).ToIDs())
 	test.NoError(t, err)
 
 	assert.Len(t, jobs, 3)
@@ -301,11 +301,11 @@ func TestManualRun2(t *testing.T) {
 func TestManualRun3(t *testing.T) {
 	db, cache, end := test.SetupPG(t, bootstrap.InitiliazeDB)
 	defer end()
-	u, _ := assets.InsertAdminUser(db)
+	u, _ := assets.InsertAdminUser(t, db)
 	consumer, _ := authentication.LoadConsumerByTypeAndUserID(context.TODO(), db, sdk.ConsumerLocal, u.ID, authentication.LoadConsumerOptions.WithAuthentifiedUser)
 
 	key := sdk.RandomString(10)
-	proj := assets.InsertTestProject(t, db, cache, key, key, u)
+	proj := assets.InsertTestProject(t, db, cache, key, key)
 	ctx := context.Background()
 
 	test.NoError(t, project.AddKeyPair(db, proj, "key", u))
@@ -431,7 +431,7 @@ func TestManualRun3(t *testing.T) {
 
 	filter := workflow.NewQueueFilter()
 	// test nil since/until
-	_, err = workflow.CountNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.GroupsToIDs(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)))
+	_, err = workflow.CountNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.Groups(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)).ToIDs())
 	test.NoError(t, err)
 
 	// queue should be empty with since 0,0 until 0,0
@@ -441,14 +441,14 @@ func TestManualRun3(t *testing.T) {
 	filter.Since = &t0
 	filter.Until = &t1
 
-	countAlreadyInQueueNone, err := workflow.CountNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.GroupsToIDs(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)))
+	countAlreadyInQueueNone, err := workflow.CountNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.Groups(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)).ToIDs())
 	test.NoError(t, err)
 	assert.Equal(t, 0, int(countAlreadyInQueueNone.Count))
 
 	filter3 := workflow.NewQueueFilter()
 	filter3.Rights = sdk.PermissionReadExecute
 
-	jobs, err := workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter3, sdk.GroupsToIDs(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)))
+	jobs, err := workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter3, sdk.Groups(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)).ToIDs())
 	test.NoError(t, err)
 
 	for i := range jobs {
@@ -548,7 +548,7 @@ func TestManualRun3(t *testing.T) {
 
 	filter = workflow.NewQueueFilter()
 	filter.Rights = sdk.PermissionReadExecute
-	jobs, err = workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.GroupsToIDs(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)))
+	jobs, err = workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.Groups(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)).ToIDs())
 	test.NoError(t, err)
 	assert.Equal(t, 1, len(jobs))
 
@@ -566,7 +566,7 @@ func TestManualRun3(t *testing.T) {
 		filter.Rights = sdk.PermissionReadExecute
 		filter.Since = &t0
 		filter.Until = &t1
-		jobsSince, err := workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.GroupsToIDs(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)))
+		jobsSince, err := workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.Groups(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)).ToIDs())
 		test.NoError(t, err)
 		for _, job := range jobsSince {
 			if jobs[0].ID == job.ID {
@@ -577,7 +577,7 @@ func TestManualRun3(t *testing.T) {
 		filter = workflow.NewQueueFilter()
 		filter.Rights = sdk.PermissionReadExecute
 		filter.Since = &t0
-		jobsSince, err = workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.GroupsToIDs(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)))
+		jobsSince, err = workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.Groups(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)).ToIDs())
 		test.NoError(t, err)
 		var found bool
 		for _, job := range jobsSince {
@@ -595,7 +595,7 @@ func TestManualRun3(t *testing.T) {
 		filter.Rights = sdk.PermissionReadExecute
 		filter.Since = &t0
 		filter.Until = &t1
-		jobsSince, err = workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.GroupsToIDs(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)))
+		jobsSince, err = workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.Groups(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)).ToIDs())
 		test.NoError(t, err)
 		for _, job := range jobsSince {
 			if jobs[0].ID == job.ID {
@@ -610,7 +610,7 @@ func TestManualRun3(t *testing.T) {
 		filter = workflow.NewQueueFilter()
 		filter.Rights = sdk.PermissionReadExecute
 		filter.RatioService = &cent
-		jobsSince, err = workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.GroupsToIDs(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)))
+		jobsSince, err = workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.Groups(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)).ToIDs())
 		test.NoError(t, err)
 		for _, job := range jobsSince {
 			if !job.ContainsService {
@@ -625,7 +625,7 @@ func TestManualRun3(t *testing.T) {
 		filter = workflow.NewQueueFilter()
 		filter.Rights = sdk.PermissionReadExecute
 		filter.RatioService = &zero
-		jobsSince, err = workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.GroupsToIDs(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)))
+		jobsSince, err = workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.Groups(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)).ToIDs())
 		test.NoError(t, err)
 		for _, job := range jobsSince {
 			if job.ContainsService {
@@ -639,7 +639,7 @@ func TestManualRun3(t *testing.T) {
 		filter = workflow.NewQueueFilter()
 		filter.Rights = sdk.PermissionReadExecute
 		filter.ModelType = []string{sdk.Openstack}
-		jobsSince, err = workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.GroupsToIDs(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)))
+		jobsSince, err = workflow.LoadNodeJobRunQueueByGroupIDs(ctx, db, cache, filter, sdk.Groups(append(u.OldUserStruct.Groups, proj.ProjectGroups[0].Group)).ToIDs())
 		test.NoError(t, err)
 		// we don't want the job with the worker model "TestManualRun"
 		for _, job := range jobsSince {
@@ -653,9 +653,9 @@ func TestManualRun3(t *testing.T) {
 func TestNoStage(t *testing.T) {
 	db, cache, end := test.SetupPG(t, bootstrap.InitiliazeDB)
 	defer end()
-	u, _ := assets.InsertAdminUser(db)
+	u, _ := assets.InsertAdminUser(t, db)
 	key := sdk.RandomString(10)
-	proj := assets.InsertTestProject(t, db, cache, key, key, u)
+	proj := assets.InsertTestProject(t, db, cache, key, key)
 
 	//First pipeline
 	pip := sdk.Pipeline{
@@ -723,11 +723,11 @@ func TestNoStage(t *testing.T) {
 func TestNoJob(t *testing.T) {
 	db, cache, end := test.SetupPG(t, bootstrap.InitiliazeDB)
 	defer end()
-	u, _ := assets.InsertAdminUser(db)
+	u, _ := assets.InsertAdminUser(t, db)
 	consumer, _ := authentication.LoadConsumerByTypeAndUserID(context.TODO(), db, sdk.ConsumerLocal, u.ID, authentication.LoadConsumerOptions.WithAuthentifiedUser)
 
 	key := sdk.RandomString(10)
-	proj := assets.InsertTestProject(t, db, cache, key, key, u)
+	proj := assets.InsertTestProject(t, db, cache, key, key)
 
 	//First pipeline
 	pip := sdk.Pipeline{

@@ -8,10 +8,10 @@ import { IdName, Label, LoadOpts, Project } from 'app/model/project.model';
 import { Usage } from 'app/model/usage.model';
 import { Variable } from 'app/model/variable.model';
 import { NavbarService } from 'app/service/navbar/navbar.service';
+import { ProjectStore } from 'app/service/project/project.store';
 import { cloneDeep } from 'lodash-es';
 import { tap } from 'rxjs/operators';
 import * as ProjectAction from './project.action';
-import { AddGroupInAllWorkflows } from './workflow.action';
 
 export class ProjectStateModel {
     public project: Project;
@@ -43,7 +43,11 @@ export class ProjectState {
         );
     }
 
-    constructor(private _http: HttpClient, private _navbarService: NavbarService) { }
+    constructor(
+        private _http: HttpClient,
+        private _navbarService: NavbarService,
+        private _projectStore: ProjectStore
+    ) { }
 
 
     @Action(ProjectAction.LoadProject)
@@ -203,7 +207,7 @@ export class ProjectState {
                 project,
                 loading: false,
             });
-            // TODO: dispatch action on global state to add project in list
+            return this._projectStore.getProjectsList(true);
         }));
     }
 
@@ -224,7 +228,7 @@ export class ProjectState {
                 project: Object.assign({}, state.project, project),
                 loading: false,
             });
-            // TODO: dispatch action on global state to update project in list
+            return this._projectStore.getProjectsList(true);
         }));
     }
 
@@ -244,7 +248,7 @@ export class ProjectState {
                 project: null,
                 loading: false,
             });
-            // TODO: dispatch action on global state to delete project in list
+            return this._projectStore.getProjectsList(true);
         }));
     }
 
@@ -387,7 +391,7 @@ export class ProjectState {
             });
 
             if (resyncProject) {
-                ctx.dispatch(new  ProjectAction.ResyncProject({
+                ctx.dispatch(new ProjectAction.ResyncProject({
                     projectKey: state.project.key,
                     opts: []
                 }));
@@ -652,19 +656,13 @@ export class ProjectState {
             params = params.append('onlyProject', 'true');
         }
 
-        return this._http.post<GroupPermission[]>('/project/' + action.payload.projectKey + '/group', action.payload.group,
+        return this._http.post<GroupPermission>('/project/' + action.payload.projectKey + '/group', action.payload.group,
             { params }
-        ).pipe(tap((groups: GroupPermission[]) => {
-            if (!action.payload.onlyProject) {
-                ctx.dispatch(new AddGroupInAllWorkflows({
-                    projectKey: action.payload.projectKey,
-                    group: action.payload.group
-                }));
-            }
-
+        ).pipe(tap((perm: GroupPermission) => {
+            let perms = state.project.groups ? state.project.groups : [];
             ctx.setState({
                 ...state,
-                project: Object.assign({}, state.project, <Project>{ groups }),
+                project: Object.assign({}, state.project, <Project>{ groups: perms.concat(perm) }),
             });
         }));
     }
@@ -690,18 +688,11 @@ export class ProjectState {
         return this._http.put<GroupPermission>(
             '/project/' + action.payload.projectKey + '/group/' + action.payload.group.group.name,
             action.payload.group
-        ).pipe(tap((group) => {
-            let groups = state.project.groups ? state.project.groups.concat([]) : [];
-            groups = groups.map((gr) => {
-                if (gr.group.name === group.group.name) {
-                    return group;
-                }
-                return gr;
-            });
-
+        ).pipe(tap((perm: GroupPermission) => {
+            let perms = state.project.groups ? state.project.groups.filter((g: GroupPermission) => g.group.id !== perm.group.id) : [];
             ctx.setState({
                 ...state,
-                project: Object.assign({}, state.project, <Project>{ groups }),
+                project: Object.assign({}, state.project, <Project>{ groups: perms.concat(perm) }),
             });
         }));
     }
@@ -1150,9 +1141,12 @@ export class ProjectState {
     @Action(ProjectAction.DisconnectRepositoryManagerInProject)
     disconnectRepositoryManager(ctx: StateContext<ProjectStateModel>, action: ProjectAction.DisconnectRepositoryManagerInProject) {
         const state = ctx.getState();
+        let params = new HttpParams();
+        params = params.append('force', 'true');
+
         return this._http.delete<Project>(
             '/project/' + action.payload.projectKey + '/repositories_manager/' +
-            action.payload.repoManager
+            action.payload.repoManager, { params }
         ).pipe(tap((project: Project) => {
             ctx.setState({
                 ...state,

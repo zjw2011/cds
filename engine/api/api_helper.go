@@ -15,28 +15,40 @@ import (
 )
 
 func isGroupAdmin(ctx context.Context, g *sdk.Group) bool {
-	consumer := getAPIConsumer(ctx)
-	member := g.IsMember(consumer.GetGroupIDs())
-	admin := g.IsAdmin(*consumer.AuthentifiedUser)
+	c := getAPIConsumer(ctx)
+	if c == nil {
+		return false
+	}
+	member := g.IsMember(c.GetGroupIDs())
+	admin := g.IsAdmin(*c.AuthentifiedUser)
 	log.Debug("api.isGroupAdmin> member: %t admin: %t", member, admin)
 	return member && admin
 }
 
 func isGroupMember(ctx context.Context, g *sdk.Group) bool {
-	consumer := getAPIConsumer(ctx)
-	return g.IsMember(consumer.GetGroupIDs()) || g.ID == group.SharedInfraGroup.ID
+	c := getAPIConsumer(ctx)
+	if c == nil {
+		return false
+	}
+	return g.IsMember(c.GetGroupIDs()) || g.ID == group.SharedInfraGroup.ID
 }
 
 func isMaintainer(ctx context.Context) bool {
-	consumer := getAPIConsumer(ctx)
-	maintainer := consumer.Maintainer()
-	admin := consumer.Admin()
+	c := getAPIConsumer(ctx)
+	if c == nil {
+		return false
+	}
+	maintainer := c.Maintainer()
+	admin := c.Admin()
 	return maintainer || admin
 }
 
 func isAdmin(ctx context.Context) bool {
-	u := getAPIConsumer(ctx)
-	return u.Admin()
+	c := getAPIConsumer(ctx)
+	if c == nil {
+		return false
+	}
+	return c.Admin()
 }
 
 func getAPIConsumer(c context.Context) *sdk.AuthConsumer {
@@ -105,7 +117,7 @@ func (a *API) isService(ctx context.Context) (*sdk.Service, bool) {
 
 	s, err := services.LoadByConsumerID(ctx, db, session.ConsumerID)
 	if err != nil {
-		log.Error("unable to get service from session %s: %v", session.ID, err)
+		log.Warning("unable to get service from session %s: %v", session.ID, err)
 		return nil, false
 	}
 	return s, true
@@ -118,8 +130,11 @@ func (a *API) isWorker(ctx context.Context) (*sdk.Worker, bool) {
 		return nil, false
 	}
 	w, err := worker.LoadByConsumerID(ctx, db, s.ConsumerID)
+	if sdk.ErrorIs(err, sdk.ErrNotFound) {
+		return nil, false
+	}
 	if err != nil {
-		log.Error("unable to get worker from session %s: %v", s.ID, err)
+		log.Warning("unable to get worker from session %s: %v", s.ID, err)
 		return nil, false
 	}
 	if w == nil {
@@ -137,7 +152,7 @@ func (a *API) isHatchery(ctx context.Context) (*sdk.Service, bool) {
 
 	s, err := services.LoadByConsumerID(ctx, db, session.ConsumerID)
 	if err != nil {
-		log.Error("unable to get hatchery from session %s: %v", session.ID, err)
+		log.Warning("unable to get hatchery from session %s: %v", session.ID, err)
 		return nil, false
 	}
 	if s.Type != services.TypeHatchery {

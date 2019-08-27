@@ -2,16 +2,12 @@ package api
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/ovh/cds/sdk/cdsclient"
-	"github.com/ovh/cds/sdk/jws"
 
 	"github.com/blang/semver"
 	"github.com/gorilla/mux"
@@ -21,6 +17,7 @@ import (
 	"github.com/ovh/cds/engine/api/action"
 	"github.com/ovh/cds/engine/api/authentication"
 	"github.com/ovh/cds/engine/api/authentication/builtin"
+	"github.com/ovh/cds/engine/api/authentication/corpsso"
 	"github.com/ovh/cds/engine/api/authentication/github"
 	"github.com/ovh/cds/engine/api/authentication/gitlab"
 	"github.com/ovh/cds/engine/api/authentication/ldap"
@@ -51,6 +48,8 @@ import (
 	"github.com/ovh/cds/engine/api/workflowtemplate"
 	"github.com/ovh/cds/engine/service"
 	"github.com/ovh/cds/sdk"
+	"github.com/ovh/cds/sdk/cdsclient"
+	"github.com/ovh/cds/sdk/jws"
 	"github.com/ovh/cds/sdk/log"
 )
 
@@ -81,43 +80,40 @@ type Configuration struct {
 		Keys     string `toml:"keys" default:"/tmp/cds/keys" json:"keys"`
 	} `toml:"directories" json:"directories"`
 	Auth struct {
-		DefaultGroup     string `toml:"defaultGroup" default:"" comment:"The default group is the group in which every new user will be granted at signup" json:"defaultGroup"`
-		SharedInfraToken string `toml:"sharedInfraToken" default:"" comment:"Token for shared.infra group. This value will be used when shared.infra will be created\nat first CDS launch. This token can be used by CDS CLI, Hatchery, etc...\nThis is mandatory." json:"-"`
-		RSAPrivateKey    string `toml:"rsaPrivateKey" default:"" comment:"The RSA Private Key used to sign and verify the JWT Tokens issued by the API \nThis is mandatory." json:"-"`
-		LDAP             struct {
-			Enable         bool   `toml:"enable" default:"false" json:"enable"`
-			SignupDisabled bool   `toml:"signupDisabled" default:"false" json:"signupDisabled"`
-			Host           string `toml:"host" json:"host"`
-			Port           int    `toml:"port" default:"636" json:"port"`
-			SSL            bool   `toml:"ssl" default:"true" json:"ssl"`
-			Base           string `toml:"base" default:"dc=myorganization,dc=com" json:"base"`
-			DN             string `toml:"dn" default:"uid=%s,ou=people,dc=myorganization,dc=com" json:"dn"`
-			Fullname       string `toml:"fullname" default:"{{.givenName}} {{.sn}}" json:"fullname"`
-			BindDN         string `toml:"bindDN" default:"" comment:"Define it if ldapsearch need to be authenticated" json:"bindDN"`
-			BindPwd        string `toml:"bindPwd" default:"" comment:"Define it if ldapsearch need to be authenticated" json:"-"`
+		DefaultGroup  string `toml:"defaultGroup" default:"" comment:"The default group is the group in which every new user will be granted at signup" json:"defaultGroup"`
+		RSAPrivateKey string `toml:"rsaPrivateKey" default:"" comment:"The RSA Private Key used to sign and verify the JWT Tokens issued by the API \nThis is mandatory." json:"-"`
+		LDAP          struct {
+			Enabled         bool   `toml:"enabled" default:"false" json:"enabled"`
+			SignupDisabled  bool   `toml:"signupDisabled" default:"false" json:"signupDisabled"`
+			Host            string `toml:"host" json:"host"`
+			Port            int    `toml:"port" default:"636" json:"port"`
+			SSL             bool   `toml:"ssl" default:"true" json:"ssl"`
+			RootDN          string `toml:"rootDN" default:"dc=myorganization,dc=com" json:"rootDN"`
+			UserSearchBase  string `toml:"userSearchBase" default:"ou=people" json:"userSearchBase"`
+			UserSearch      string `toml:"userSearch" default:"uid={0}" json:"userSearch"`
+			UserFullname    string `toml:"fullname" default:"{{.givenName}} {{.sn}}" json:"fullname"`
+			ManagerDN       string `toml:"ManagerDN" default:"cn=admin,dc=myorganization,dc=com" comment:"Define it if ldapsearch need to be authenticated" json:"ManagerDN"`
+			ManagerPassword string `toml:"ManagerPassword" default:"SECRET_PASSWORD_MANAGER" comment:"Define it if ldapsearch need to be authenticated" json:"-"`
 		} `toml:"ldap" json:"ldap"`
 		Local struct {
-			Enable               bool   `toml:"enable" default:"true" json:"enable"`
+			Enabled              bool   `toml:"enabled" default:"true" json:"enabled"`
 			SignupDisabled       bool   `toml:"signupDisabled" default:"false" json:"signupDisabled"`
 			SignupAllowedDomains string `toml:"signupAllowedDomains" default:"" comment:"Allow signup from selected domains only - comma separated. Example: your-domain.com,another-domain.com" commented:"true" json:"signupAllowedDomains"`
 		} `toml:"local" json:"local"`
 		CorporateSSO struct {
 			Enabled        bool   `json:"enabled" default:"false" toml:"enabled"`
 			SignupDisabled bool   `json:"signupDisabled" default:"false" toml:"signupDisabled"`
+			MailDomain     string `json:"mailDomain" toml:"mailDomain"`
 			RedirectMethod string `json:"redirect_method" toml:"redirectMethod"`
 			RedirectURL    string `json:"redirect_url" toml:"redirectURL"`
 			Keys           struct {
 				RequestSigningKey  string `json:"request_signing_key" toml:"requestSigningKey"`
 				TokenSigningKey    string `json:"token_signing_key" toml:"tokenSigningKey"`
-				TokenKeySigningKey *struct {
-					KeySigningKey   string `json:"public_signing_key" toml:"publicSigningKey"`
+				TokenKeySigningKey struct {
+					KeySigningKey   string `json:"public_signing_key" toml:"keySigningKey"`
 					SigningKeyClaim string `json:"signing_key_claim" toml:"signingKeyClaim"`
-				} `json:"key_signing_key" toml:"keySigningKey"`
+				} `json:"key_signing_key" toml:"tokenKeySigningKey"`
 			} `json:"keys" toml:"keys"`
-			Claims struct { // TODO
-				Username     string `json:"username"`
-				SessionLevel string `json:"session_level"`
-			} `json:"claims" toml:"claims"`
 		} `json:"corporate_sso" toml:"corporateSSO"`
 		Github struct {
 			Enabled        bool   `toml:"enabled" default:"false" json:"enabled"`
@@ -192,32 +188,9 @@ type Configuration struct {
 	Vault struct {
 		ConfigurationKey string `toml:"configurationKey" json:"-"`
 	} `toml:"vault" json:"vault"`
-	Services []ServiceConfiguration `toml:"services" comment:"###########################\n CDS Services Settings \n##########################" json:"services"`
-	Status   struct {
-		API struct {
-			MinInstance int `toml:"minInstance" default:"1" comment:"if less than minInstance of API is running, an alert will on Global/API be created on /mon/status" json:"minInstance"`
-		} `toml:"api" json:"api"`
-		DBMigrate struct {
-			MinInstance int `toml:"minInstance" default:"1" comment:"if less than minInstance of dbmigrate service is running, an alert on Global/dbmigrate will be created on /mon/status" json:"minInstance"`
-		} `toml:"dbmigrate" json:"dbmigrate"`
-		ElasticSearch struct {
-			MinInstance int `toml:"minInstance" default:"1" comment:"if less than minInstance of elasticsearch service is running, an alert on Global/elasticsearch will be created on /mon/status" json:"minIntance"`
-		} `toml:"elasticsearch" json:"elasticsearch"`
-		Hatchery struct {
-			MinInstance int `toml:"minInstance" default:"1" comment:"if less than minInstance of hatchery service is running, an alert on Global/hatchery will be created on /mon/status" json:"minInstance"`
-		} `toml:"hatchery" json:"hatchery"`
-		Hooks struct {
-			MinInstance int `toml:"minInstance" default:"1" comment:"if less than minInstance of hooks service is running, an alert on Global/hooks will be created on /mon/status" json:"minInstance"`
-		} `toml:"hooks" json:"hooks"`
-		Repositories struct {
-			MinInstance int `toml:"minInstance" default:"1" comment:"if less than minInstance of repositories service is running, an alert on Global/hooks will be created on /mon/status" json:"minInstance"`
-		} `toml:"repositories" json:"repositories"`
-		VCS struct {
-			MinInstance int `toml:"minInstance" default:"1" comment:"if less than minInstance of vcs service is running, an alert will on Global/vcs be created on /mon/status" json:"minInstance"`
-		} `toml:"vcs" json:"vcs"`
-	} `toml:"status" comment:"###########################\n CDS Status Settings \n Documentation: https://ovh.github.io/cds/hosting/monitoring/ \n##########################" json:"status"`
-	DefaultOS   string `toml:"defaultOS" default:"linux" comment:"if no model and os/arch is specified in your job's requirements then spawn worker on this operating system (example: freebsd, linux, windows)" json:"defaultOS"`
-	DefaultArch string `toml:"defaultArch" default:"amd64" comment:"if no model and no os/arch is specified in your job's requirements then spawn worker on this architecture (example: amd64, arm, 386)" json:"defaultArch"`
+	Services    []ServiceConfiguration `toml:"services" comment:"###########################\n CDS Services Settings \n##########################" json:"services"`
+	DefaultOS   string                 `toml:"defaultOS" default:"linux" comment:"if no model and os/arch is specified in your job's requirements then spawn worker on this operating system (example: freebsd, linux, windows)" json:"defaultOS"`
+	DefaultArch string                 `toml:"defaultArch" default:"amd64" comment:"if no model and no os/arch is specified in your job's requirements then spawn worker on this architecture (example: amd64, arm, 386)" json:"defaultArch"`
 	Graylog     struct {
 		AccessToken string `toml:"accessToken" json:"-"`
 		Stream      string `toml:"stream" json:"-"`
@@ -322,6 +295,7 @@ func (a *API) ApplyConfiguration(config interface{}) error {
 
 	a.Type = services.TypeAPI
 	a.ServiceName = "cds-api"
+	a.Name = event.GetCDSName()
 
 	return nil
 }
@@ -405,6 +379,16 @@ func (a *API) CheckConfiguration(config interface{}) error {
 	return nil
 }
 
+type StartupConfig struct {
+	Consumers []StartupConfigService
+}
+type StartupConfigService struct {
+	ID          string
+	Name        string
+	Description string
+	ServiceType string
+}
+
 // Serve will start the http api server
 func (a *API) Serve(ctx context.Context) error {
 	log.Info("Starting CDS API Server %s", sdk.VERSION)
@@ -442,7 +426,7 @@ func (a *API) Serve(ctx context.Context) error {
 	secret.Init(a.Config.Secrets.Key)
 
 	// Initialize the jwt layer
-	if err := authentication.Init(a.Name, []byte(a.Config.Auth.RSAPrivateKey)); err != nil {
+	if err := authentication.Init(a.ServiceName, []byte(a.Config.Auth.RSAPrivateKey)); err != nil {
 		return sdk.WrapError(err, "unable to initialize the JWT Layer")
 	}
 
@@ -546,7 +530,6 @@ func (a *API) Serve(ctx context.Context) error {
 	log.Info("Bootstrapping database...")
 	defaultValues := sdk.DefaultValues{
 		DefaultGroupName: a.Config.Auth.DefaultGroup,
-		SharedInfraToken: a.Config.Auth.SharedInfraToken,
 	}
 	if err := bootstrap.InitiliazeDB(defaultValues, a.DBConnectionFactory.GetDBMap); err != nil {
 		return fmt.Errorf("cannot setup databases: %v", err)
@@ -568,10 +551,8 @@ func (a *API) Serve(ctx context.Context) error {
 	if err != nil {
 		return sdk.WrapError(err, "Unable to export public signing key")
 	}
-	encodedPubKey := base64.StdEncoding.EncodeToString(pubKey)
 
 	log.Info("API Public Key: \n%s", string(pubKey))
-	log.Info("API Public Key (base64 encoded): %s", encodedPubKey)
 
 	log.Info("Initializing redis cache on %s...", a.Config.Cache.Redis.Host)
 	// Init the cache
@@ -606,7 +587,7 @@ func (a *API) Serve(ctx context.Context) error {
 	a.AuthenticationDrivers = make(map[sdk.AuthConsumerType]sdk.AuthDriver)
 
 	a.AuthenticationDrivers[sdk.ConsumerBuiltin] = builtin.NewDriver()
-	if a.Config.Auth.Local.Enable {
+	if a.Config.Auth.Local.Enabled {
 		a.AuthenticationDrivers[sdk.ConsumerLocal] = local.NewDriver(
 			a.Config.Auth.Local.SignupDisabled,
 			a.Config.URL.UI,
@@ -614,20 +595,24 @@ func (a *API) Serve(ctx context.Context) error {
 		)
 	}
 
-	if a.Config.Auth.LDAP.Enable {
-		a.AuthenticationDrivers[sdk.ConsumerLDAP] = ldap.NewDriver(
+	if a.Config.Auth.LDAP.Enabled {
+		a.AuthenticationDrivers[sdk.ConsumerLDAP], err = ldap.NewDriver(
 			a.Config.Auth.LDAP.SignupDisabled,
 			ldap.Config{
-				Host:         a.Config.Auth.LDAP.Host,
-				Port:         a.Config.Auth.LDAP.Port,
-				Base:         a.Config.Auth.LDAP.Base,
-				DN:           a.Config.Auth.LDAP.DN,
-				SSL:          a.Config.Auth.LDAP.SSL,
-				UserFullname: a.Config.Auth.LDAP.Fullname,
-				BindDN:       a.Config.Auth.LDAP.BindDN,
-				BindPwd:      a.Config.Auth.LDAP.BindPwd,
+				Host:            a.Config.Auth.LDAP.Host,
+				Port:            a.Config.Auth.LDAP.Port,
+				SSL:             a.Config.Auth.LDAP.SSL,
+				RootDN:          a.Config.Auth.LDAP.RootDN,
+				UserSearchBase:  a.Config.Auth.LDAP.UserSearchBase,
+				UserSearch:      a.Config.Auth.LDAP.UserSearch,
+				UserFullname:    a.Config.Auth.LDAP.UserFullname,
+				ManagerDN:       a.Config.Auth.LDAP.ManagerDN,
+				ManagerPassword: a.Config.Auth.LDAP.ManagerPassword,
 			},
 		)
+		if err != nil {
+			return err
+		}
 	}
 	if a.Config.Auth.Github.Enabled {
 		a.AuthenticationDrivers[sdk.ConsumerGithub] = github.NewDriver(
@@ -649,19 +634,25 @@ func (a *API) Serve(ctx context.Context) error {
 		)
 	}
 
-	log.Info("Initializing event broker...")
-	kafkaOptions := event.KafkaConfig{
-		Enabled:         a.Config.Events.Kafka.Enabled,
-		BrokerAddresses: a.Config.Events.Kafka.Broker,
-		User:            a.Config.Events.Kafka.User,
-		Password:        a.Config.Events.Kafka.Password,
-		Topic:           a.Config.Events.Kafka.Topic,
-		MaxMessageByte:  a.Config.Events.Kafka.MaxMessageBytes,
+	if a.Config.Auth.CorporateSSO.Enabled {
+		driverConfig := corpsso.Config{
+			MailDomain: a.Config.Auth.CorporateSSO.MailDomain,
+		}
+		driverConfig.Request.Keys.RequestSigningKey = a.Config.Auth.CorporateSSO.Keys.RequestSigningKey
+		driverConfig.Request.RedirectMethod = a.Config.Auth.CorporateSSO.RedirectMethod
+		driverConfig.Request.RedirectURL = a.Config.Auth.CorporateSSO.RedirectURL
+		driverConfig.Token.SigningKey = a.Config.Auth.CorporateSSO.Keys.TokenSigningKey
+		driverConfig.Token.KeySigningKey.KeySigningKey = a.Config.Auth.CorporateSSO.Keys.TokenKeySigningKey.KeySigningKey
+		driverConfig.Token.KeySigningKey.SigningKeyClaim = a.Config.Auth.CorporateSSO.Keys.TokenKeySigningKey.SigningKeyClaim
+
+		a.AuthenticationDrivers[sdk.ConsumerCorporateSSO] = corpsso.NewDriver(driverConfig)
 	}
-	if err := event.Initialize(kafkaOptions, a.Cache); err != nil {
+
+	log.Info("Initializing event broker...")
+	if err := event.Initialize(a.mustDB(), a.Cache); err != nil {
 		log.Error("error while initializing event system: %s", err)
 	} else {
-		go event.DequeueEvent(ctx)
+		go event.DequeueEvent(ctx, a.mustDB())
 	}
 
 	a.warnChan = make(chan sdk.Event)
@@ -714,12 +705,11 @@ func (a *API) Serve(ctx context.Context) error {
 	sdk.GoRoutine(ctx, "api.serviceAPIHeartbeat", func(ctx context.Context) {
 		a.serviceAPIHeartbeat(ctx)
 	}, a.PanicDump())
+	sdk.GoRoutine(ctx, "authentication.SessionCleaner", func(ctx context.Context) {
+		authentication.SessionCleaner(ctx, a.mustDB)
+	}, a.PanicDump())
 
 	//Temporary migration code
-	//DEPRECATED Migrations
-	sdk.GoRoutine(ctx, "migrate.KeyMigration", func(ctx context.Context) {
-		migrate.KeyMigration(a.Cache, a.DBConnectionFactory.GetDBMap, &sdk.AuthentifiedUser{Ring: sdk.UserRingAdmin})
-	}, a.PanicDump())
 	migrate.Add(sdk.Migration{Name: "WorkflowNotification", Release: "0.38.1", Mandatory: true, ExecFunc: func(ctx context.Context) error {
 		return migrate.WorkflowNotifications(a.Cache, a.DBConnectionFactory.GetDBMap)
 	}})
@@ -734,6 +724,17 @@ func (a *API) Serve(ctx context.Context) error {
 	}})
 	migrate.Add(sdk.Migration{Name: "ActionModelRequirements", Release: "0.39.3", Mandatory: true, ExecFunc: func(ctx context.Context) error {
 		return migrate.ActionModelRequirements(ctx, a.Cache, a.DBConnectionFactory.GetDBMap)
+	}})
+	migrate.Add(sdk.Migration{Name: "AddPublicEventIntegration", Release: "0.40.0", Mandatory: true, ExecFunc: func(ctx context.Context) error {
+		kafkaCfg := migrate.KafkaConfig{
+			Enabled:         a.Config.Events.Kafka.Enabled,
+			Broker:          a.Config.Events.Kafka.Broker,
+			Topic:           a.Config.Events.Kafka.Topic,
+			User:            a.Config.Events.Kafka.User,
+			Password:        a.Config.Events.Kafka.Password,
+			MaxMessageBytes: a.Config.Events.Kafka.MaxMessageBytes,
+		}
+		return migrate.AddPublicEventIntegration(ctx, a.Cache, a.DBConnectionFactory.GetDBMap, kafkaCfg)
 	}})
 
 	isFreshInstall, errF := version.IsFreshInstall(a.mustDB())
@@ -848,6 +849,7 @@ const panicDumpTTL = 60 * 60 * 24 // 24 hours
 
 func (a *API) PanicDump() func(s string) (io.WriteCloser, error) {
 	return func(s string) (io.WriteCloser, error) {
+		log.Error("API Panic stacktrace: %s", s)
 		return cache.NewWriteCloser(a.Cache, cache.Key("api", "panic_dump", s), panicDumpTTL), nil
 	}
 }

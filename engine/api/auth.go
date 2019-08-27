@@ -7,7 +7,6 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/ovh/cds/engine/api/authentication"
-	"github.com/ovh/cds/engine/api/authentication/local"
 	"github.com/ovh/cds/engine/api/user"
 	"github.com/ovh/cds/engine/service"
 	"github.com/ovh/cds/sdk"
@@ -21,7 +20,26 @@ func (api *API) getAuthDriversHandler() service.Handler {
 			drivers = append(drivers, d.GetManifest())
 		}
 
-		return service.WriteJSON(w, drivers, http.StatusOK)
+		countAdmins, err := user.CountAdmin(api.mustDB())
+		if err != nil {
+			return err
+		}
+
+		var response = struct {
+			IsFirstConnection bool                     `json:"is_first_connection"`
+			Drivers           []sdk.AuthDriverManifest `json:"manifests"`
+		}{
+			IsFirstConnection: countAdmins == 0,
+			Drivers:           drivers,
+		}
+
+		return service.WriteJSON(w, response, http.StatusOK)
+	}
+}
+
+func (api *API) getAuthScopesHandler() service.Handler {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+		return service.WriteJSON(w, sdk.AuthConsumerScopes, http.StatusOK)
 	}
 }
 
@@ -39,21 +57,35 @@ func (api *API) getAuthAskSigninHandler() service.Handler {
 			return sdk.WithStack(sdk.ErrNotFound)
 		}
 
-		// Get the origin from request if set
-		origin := FormString(r, "origin")
-		if origin != "" && !(origin == "cdsctl" || origin == "ui") {
-			return sdk.NewErrorFrom(sdk.ErrWrongRequest, "invalid given origin value")
+		driverRedirect, ok := driver.(sdk.AuthDriverWithRedirect)
+		if !ok {
+			return nil
 		}
 
-		// Generate a new state value for the auth signin request
-		state, err := authentication.NewSigninStateToken(origin)
+		countAdmins, err := user.CountAdmin(api.mustDB())
 		if err != nil {
 			return err
 		}
 
+		var signinState = sdk.AuthSigninConsumerToken{
+			RequireMFA:        QueryBool(r, "require_mfa"),
+			RedirectURI:       QueryString(r, "redirect_uri"),
+			IsFirstConnection: countAdmins == 0,
+		}
+		// Get the origin from request if set
+		signinState.Origin = QueryString(r, "origin")
+
+		if signinState.Origin != "" && !(signinState.Origin == "cdsctl" || signinState.Origin == "ui") {
+			return sdk.NewErrorFrom(sdk.ErrWrongRequest, "invalid given origin value")
+		}
+
 		// Redirect to the right signin page depending on the consumer type
-		http.Redirect(w, r, driver.GetSigninURI(state), http.StatusTemporaryRedirect)
-		return nil
+		redirect, err := driverRedirect.GetSigninURI(signinState)
+		if err != nil {
+			return err
+		}
+
+		return service.WriteJSON(w, redirect, http.StatusOK)
 	}
 }
 
@@ -80,13 +112,12 @@ func (api *API) postAuthSigninHandler() service.Handler {
 			return err
 		}
 
-		// Check if state is given and if its valid
-		state, okState := req["state"]
-		if !okState {
-			return sdk.NewErrorFrom(sdk.ErrWrongRequest, "missing state value")
-		}
-		if err := authentication.CheckSigninStateToken(state); err != nil {
-			return err
+		// Extract and validate signin state
+		switch x := driver.(type) {
+		case sdk.AuthDriverWithSigninStateToken:
+			if err := x.CheckSigninStateToken(req); err != nil {
+				return err
+			}
 		}
 
 		// Convert code to external user info
@@ -101,82 +132,106 @@ func (api *API) postAuthSigninHandler() service.Handler {
 		}
 		defer tx.Rollback() // nolint
 
+		var signupDone bool
+		initToken, hasInitToken := req["init_token"]
+		hasInitToken = hasInitToken && initToken != ""
+
 		// Check if a consumer exists for consumer type and external user identifier
 		consumer, err := authentication.LoadConsumerByTypeAndUserExternalID(ctx, tx, consumerType, userInfo.ExternalID)
 		if err != nil && !sdk.ErrorIs(err, sdk.ErrNotFound) {
 			return err
 		}
-		if consumer == nil {
-			if driver.GetManifest().SignupDisabled {
-				return sdk.WithStack(sdk.ErrSignupDisabled)
-			}
 
+		// If there is no existing consumer we should check if a user need to be created
+		// Then we want to create a new consumer for current type
+		if consumer == nil {
 			// Check if a user already exists for external username
-			u, err := user.LoadByUsername(ctx, tx, userInfo.Username)
+			u, err := user.LoadByUsername(ctx, tx, userInfo.Username, user.LoadOptions.WithContacts)
 			if err != nil && !sdk.ErrorIs(err, sdk.ErrUserNotFound) {
 				return err
 			}
 			if u != nil {
-				return sdk.NewErrorFrom(sdk.ErrForbidden, "a user already exists for external user name %s", userInfo.Username)
-			}
+				// If the user exists with the same email address than in the userInfo,
+				// we will create a new consumer and continue the signin
+				// else we raise an error
+				if u.GetEmail() != userInfo.Email {
+					return sdk.NewErrorFrom(sdk.ErrForbidden, "a user already exists for username %s", userInfo.Username)
+				}
+			} else {
+				// Check if a user already exists for external email
+				contact, err := user.LoadContactsByTypeAndValue(ctx, tx, sdk.UserContactTypeEmail, userInfo.Email)
+				if err != nil && !sdk.ErrorIs(err, sdk.ErrNotFound) {
+					return err
+				}
+				if contact != nil {
+					// A user already exists with an other username but the same email address
+					u, err = user.LoadByID(ctx, tx, contact.UserID, user.LoadOptions.WithContacts)
+					if err != nil {
+						return err
+					}
+				} else {
+					// We can't find any user with the same email address
+					// So we will do signup for a new user from the data got from the auth driver
+					if driver.GetManifest().SignupDisabled {
+						return sdk.WithStack(sdk.ErrSignupDisabled)
+					}
 
-			// Check if a user already exists for external email
-			contact, err := user.LoadContactsByTypeAndValue(ctx, tx, sdk.UserContactTypeEmail, userInfo.Email)
-			if err != nil && !sdk.ErrorIs(err, sdk.ErrNotFound) {
-				return err
-			}
-			if contact != nil {
-				return sdk.NewErrorFrom(sdk.ErrForbidden, "a user already exists for external email %s", userInfo.Email)
-			}
+					u = &sdk.AuthentifiedUser{
+						Ring:     sdk.UserRingUser,
+						Username: userInfo.Username,
+						Fullname: userInfo.Fullname,
+					}
 
-			// Prepare new user
-			newUser := sdk.AuthentifiedUser{
-				Ring:     sdk.UserRingUser,
-				Username: userInfo.Username,
-				Fullname: userInfo.Fullname,
-			}
+					// If a magic token is given and there is no admin already registered, set new user as admin
+					countAdmins, err := user.CountAdmin(tx)
+					if err != nil {
+						return err
+					}
+					if countAdmins == 0 && hasInitToken {
+						u.Ring = sdk.UserRingAdmin
+					} else {
+						hasInitToken = false
+					}
 
-			// The first user is set as ADMIN
-			countUsers, err := user.Count(tx)
-			if err != nil {
-				return err
-			}
-			if countUsers == 0 {
-				newUser.Ring = sdk.UserRingAdmin
-			}
+					// Insert the new user in database
+					if err := user.Insert(tx, u); err != nil {
+						return err
+					}
 
-			// Insert the new user in database
-			if err := user.Insert(tx, &newUser); err != nil {
-				return err
-			}
+					userContact := sdk.UserContact{
+						Primary:  true,
+						Type:     sdk.UserContactTypeEmail,
+						UserID:   u.ID,
+						Value:    userInfo.Email,
+						Verified: true,
+					}
 
-			userContact := sdk.UserContact{
-				Primary:  true,
-				Type:     sdk.UserContactTypeEmail,
-				UserID:   newUser.ID,
-				Value:    userInfo.Email,
-				Verified: true,
-			}
+					// Insert the primary contact for the new user in database
+					if err := user.InsertContact(tx, &userContact); err != nil {
+						return err
+					}
 
-			// Insert the primary contact for the new user in database
-			if err := user.InsertContact(tx, &userContact); err != nil {
-				return err
+					signupDone = true
+				}
 			}
 
 			// Create a new consumer for the new user
-			consumer, err = authentication.NewConsumerExternal(tx, newUser.ID, consumerType, userInfo)
+			consumer, err = authentication.NewConsumerExternal(tx, u.ID, consumerType, userInfo)
 			if err != nil {
 				return err
 			}
+		}
 
-			// For each account we want to create a local consumer too
-			if _, err := local.NewConsumer(tx, newUser.ID); err != nil {
+		// If a new user has been created and a first admin has been create,
+		// let's init the builtin consumers from the magix token
+		if signupDone && hasInitToken {
+			if err := initBuiltinConsumersFromStartupConfig(tx, consumer, initToken); err != nil {
 				return err
 			}
 		}
 
 		// Generate a new session for consumer
-		session, err := authentication.NewSession(tx, consumer, driver.GetSessionDuration())
+		session, err := authentication.NewSession(tx, consumer, driver.GetSessionDuration(), userInfo.MFA)
 		if err != nil {
 			return err
 		}

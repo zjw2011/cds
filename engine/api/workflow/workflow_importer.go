@@ -61,10 +61,16 @@ func Import(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj *s
 	oldHooksByRef := oldW.WorkflowData.GetHooksMapRef()
 	for i := range w.WorkflowData.Node.Hooks {
 		h := &w.WorkflowData.Node.Hooks[i]
-		if h.Ref != "" {
+		if h.Ref != "" && h.UUID == "" {
 			if oldH, has := oldHooksByRef[h.Ref]; has {
 				if len(h.Config) == 0 {
-					h.Config = oldH.Config
+					h.Config = oldH.Config.Clone()
+					// the oldW can have a different name than the workflow to import
+					//we have to rename the workflow name in the hook config retrieve from old workflow
+					h.Config[sdk.HookConfigWorkflow] = sdk.WorkflowNodeHookConfigValue{
+						Value:        w.Name,
+						Configurable: false,
+					}
 				}
 				h.UUID = oldH.UUID
 				continue

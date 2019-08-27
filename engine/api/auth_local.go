@@ -4,6 +4,11 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/go-gorp/gorp"
+	"github.com/ovh/cds/engine/api/services"
+
+	"github.com/ovh/cds/engine/api/group"
+
 	"github.com/ovh/cds/engine/api/authentication"
 	"github.com/ovh/cds/engine/api/authentication/local"
 	"github.com/ovh/cds/engine/api/mail"
@@ -32,6 +37,9 @@ func (api *API) postAuthLocalSignupHandler() service.Handler {
 			return err
 		}
 
+		initToken, hasInitToken := reqData["init_token"]
+		hasInitToken = hasInitToken && initToken != ""
+
 		tx, err := api.mustDB().Begin()
 		if err != nil {
 			return sdk.WithStack(err)
@@ -54,12 +62,12 @@ func (api *API) postAuthLocalSignupHandler() service.Handler {
 			Fullname: reqData["fullname"],
 		}
 
-		// The first user is set as ADMIN
-		countUsers, err := user.Count(tx)
+		countAdmins, err := user.CountAdmin(tx)
 		if err != nil {
 			return err
 		}
-		if countUsers == 0 {
+		// If a magic token is given and there is no admin already registered, set new user as admin
+		if countAdmins == 0 && hasInitToken {
 			newUser.Ring = sdk.UserRingAdmin
 		}
 
@@ -87,6 +95,13 @@ func (api *API) postAuthLocalSignupHandler() service.Handler {
 			return err
 		}
 
+		// Check if a magic init token was given for first signup
+		if countAdmins == 0 && hasInitToken {
+			if err := initBuiltinConsumersFromStartupConfig(tx, consumer, initToken); err != nil {
+				return err
+			}
+		}
+
 		// Generate a token to verify consumer
 		verifyToken, err := local.NewVerifyConsumerToken(api.Cache, consumer.ID)
 		if err != nil {
@@ -105,6 +120,48 @@ func (api *API) postAuthLocalSignupHandler() service.Handler {
 
 		return service.WriteJSON(w, nil, http.StatusCreated)
 	}
+}
+
+func initBuiltinConsumersFromStartupConfig(tx gorp.SqlExecutor, consumer *sdk.AuthConsumer, initToken string) error {
+	// Deserialize the magic token to retrieve the startup configuration
+	var startupConfig StartupConfig
+	if err := authentication.VerifyJWS(initToken, &startupConfig); err != nil {
+		return sdk.NewErrorWithStack(err, sdk.NewErrorFrom(sdk.ErrWrongRequest, "invalid given init token"))
+	}
+
+	log.Warning("Magic token detected !: %s", initToken)
+
+	// Create the consumers provided by the startup configuration
+	for _, cfg := range startupConfig.Consumers {
+		var scopes sdk.AuthConsumerScopeSlice
+
+		switch cfg.ServiceType {
+		case services.TypeHatchery:
+			scopes = []sdk.AuthConsumerScope{sdk.AuthConsumerScopeService, sdk.AuthConsumerScopeHatchery, sdk.AuthConsumerScopeRunExecution}
+		case services.TypeHooks:
+			scopes = []sdk.AuthConsumerScope{sdk.AuthConsumerScopeService, sdk.AuthConsumerScopeHooks, sdk.AuthConsumerScopeProject, sdk.AuthConsumerScopeRun}
+		default:
+			scopes = []sdk.AuthConsumerScope{sdk.AuthConsumerScopeService}
+		}
+
+		var c = sdk.AuthConsumer{
+			ID:                 cfg.ID,
+			Name:               cfg.Name,
+			Description:        cfg.Description,
+			AuthentifiedUserID: consumer.AuthentifiedUserID,
+			ParentID:           &consumer.ID,
+			Type:               sdk.ConsumerBuiltin,
+			Data:               map[string]string{},
+			GroupIDs:           []int64{group.SharedInfraGroup.ID},
+			Scopes:             scopes,
+		}
+
+		if err := authentication.InsertConsumer(tx, &c); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // postAuthLocalSigninHandler returns a new session for an existing local consumer.
@@ -133,13 +190,13 @@ func (api *API) postAuthLocalSigninHandler() service.Handler {
 		// Try to load a user in database for given username
 		usr, err := user.LoadByUsername(ctx, tx, reqData["username"])
 		if err != nil {
-			return sdk.NewErrorWithStack(err, sdk.WithStack(sdk.ErrUnauthorized))
+			return sdk.NewErrorWithStack(err, sdk.ErrUnauthorized)
 		}
 
 		// Try to load a local consumer for user
 		consumer, err := authentication.LoadConsumerByTypeAndUserID(ctx, tx, sdk.ConsumerLocal, usr.ID, authentication.LoadConsumerOptions.WithAuthentifiedUser)
 		if err != nil {
-			return sdk.NewErrorWithStack(err, sdk.WithStack(sdk.ErrUnauthorized))
+			return sdk.NewErrorWithStack(err, sdk.ErrUnauthorized)
 		}
 
 		// Check if local auth is active
@@ -151,11 +208,11 @@ func (api *API) postAuthLocalSigninHandler() service.Handler {
 		if hash, ok := consumer.Data["hash"]; !ok {
 			return sdk.WithStack(sdk.ErrUnauthorized)
 		} else if err := local.CompareHashAndPassword([]byte(hash), reqData["password"]); err != nil {
-			return sdk.NewErrorWithStack(err, sdk.WithStack(sdk.ErrUnauthorized))
+			return sdk.NewErrorWithStack(err, sdk.ErrUnauthorized)
 		}
 
 		// Generate a new session for consumer
-		session, err := authentication.NewSession(tx, consumer, driver.GetSessionDuration())
+		session, err := authentication.NewSession(tx, consumer, driver.GetSessionDuration(), false)
 		if err != nil {
 			return err
 		}
@@ -219,10 +276,10 @@ func (api *API) postAuthLocalVerifyHandler() service.Handler {
 		// Get the consumer from database and set it to verified
 		consumer, err := authentication.LoadConsumerByID(ctx, tx, consumerID)
 		if err != nil {
-			return sdk.NewErrorWithStack(err, sdk.WithStack(sdk.ErrUnauthorized))
+			return sdk.NewErrorWithStack(err, sdk.ErrUnauthorized)
 		}
 		if consumer.Type != sdk.ConsumerLocal {
-			return sdk.NewErrorWithStack(err, sdk.WithStack(sdk.ErrUnauthorized))
+			return sdk.NewErrorWithStack(err, sdk.ErrUnauthorized)
 		}
 
 		consumer.Data["verified"] = sdk.TrueString
@@ -231,7 +288,7 @@ func (api *API) postAuthLocalVerifyHandler() service.Handler {
 		}
 
 		// Generate a new session for consumer
-		session, err := authentication.NewSession(tx, consumer, driver.GetSessionDuration())
+		session, err := authentication.NewSession(tx, consumer, driver.GetSessionDuration(), false)
 		if err != nil {
 			return err
 		}
@@ -280,12 +337,21 @@ func (api *API) postAuthLocalAskResetHandler() service.Handler {
 
 		localDriver := driver.(*local.AuthDriver)
 
-		var reqData sdk.AuthConsumerSigninRequest
-		if err := service.UnmarshalBody(r, &reqData); err != nil {
-			return err
-		}
-		if err := localDriver.CheckAskResetRequest(reqData); err != nil {
-			return err
+		var email string
+
+		// If there is a consumer, send directly to the primary contact for the user.
+		consumer := getAPIConsumer(ctx)
+		if consumer != nil {
+			email = consumer.GetEmail()
+		} else {
+			var reqData sdk.AuthConsumerSigninRequest
+			if err := service.UnmarshalBody(r, &reqData); err != nil {
+				return err
+			}
+			if err := localDriver.CheckAskResetRequest(reqData); err != nil {
+				return err
+			}
+			email = reqData["email"]
 		}
 
 		tx, err := api.mustDB().Begin()
@@ -294,34 +360,38 @@ func (api *API) postAuthLocalAskResetHandler() service.Handler {
 		}
 		defer tx.Rollback() // nolint
 
-		contact, err := user.LoadContactsByTypeAndValue(ctx, tx, sdk.UserContactTypeEmail, reqData["email"])
+		contact, err := user.LoadContactsByTypeAndValue(ctx, tx, sdk.UserContactTypeEmail, email)
 		if err != nil {
 			// If there is no contact for given email, return ok to prevent email exploration
 			if sdk.ErrorIs(err, sdk.ErrNotFound) {
-				log.Warning("api.postAuthLocalAskResetHandler> no contact found for email %s: %v", reqData["email"], err)
+				log.Warning("api.postAuthLocalAskResetHandler> no contact found for email %s: %v", email, err)
 				return service.WriteJSON(w, nil, http.StatusOK)
 			}
 			return err
 		}
 
-		consumer, err := authentication.LoadConsumerByTypeAndUserID(ctx, tx, sdk.ConsumerLocal, contact.UserID,
-			authentication.LoadConsumerOptions.WithAuthentifiedUser)
-		if err != nil {
-			// If there is no local consumer for given email, return ok to prevent account exploration
-			if sdk.ErrorIs(err, sdk.ErrNotFound) {
-				log.Warning("api.postAuthLocalAskResetHandler> no local consumer found for contact with email %s: %v", reqData["email"], err)
-				return service.WriteJSON(w, nil, http.StatusOK)
+		existingLocalConsumer, err := authentication.LoadConsumerByTypeAndUserID(ctx, tx, sdk.ConsumerLocal, contact.UserID)
+		if err != nil && !sdk.ErrorIs(err, sdk.ErrNotFound) {
+			return err
+		}
+		if existingLocalConsumer == nil {
+			// If a user exists for given email but has no local consumer we want to create it.
+			existingLocalConsumer, err = local.NewConsumer(tx, contact.UserID)
+			if err != nil {
+				return err
 			}
+		}
+		if err := authentication.LoadConsumerOptions.WithAuthentifiedUser(ctx, tx, existingLocalConsumer); err != nil {
 			return err
 		}
 
-		resetToken, err := local.NewResetConsumerToken(api.Cache, consumer.ID)
+		resetToken, err := local.NewResetConsumerToken(api.Cache, existingLocalConsumer.ID)
 		if err != nil {
 			return err
 		}
 
 		// Insert the authentication
-		if err := mail.SendMailAskResetToken(contact.Value, consumer.AuthentifiedUser.Username, resetToken,
+		if err := mail.SendMailAskResetToken(contact.Value, existingLocalConsumer.AuthentifiedUser.Username, resetToken,
 			api.Config.URL.UI+"/auth/reset?token=%s"); err != nil {
 			return sdk.WrapError(err, "cannot send reset token email at %s", contact.Value)
 		}
@@ -365,10 +435,10 @@ func (api *API) postAuthLocalResetHandler() service.Handler {
 		// Get the consumer from database and set it to verified
 		consumer, err := authentication.LoadConsumerByID(ctx, tx, consumerID)
 		if err != nil {
-			return sdk.NewErrorWithStack(err, sdk.WithStack(sdk.ErrUnauthorized))
+			return sdk.NewErrorWithStack(err, sdk.ErrUnauthorized)
 		}
 		if consumer.Type != sdk.ConsumerLocal {
-			return sdk.NewErrorWithStack(err, sdk.WithStack(sdk.ErrUnauthorized))
+			return sdk.NewErrorWithStack(err, sdk.ErrUnauthorized)
 		}
 
 		// In case where the user was not verified already set it to verified
@@ -386,7 +456,7 @@ func (api *API) postAuthLocalResetHandler() service.Handler {
 		}
 
 		// Generate a new session for consumer
-		session, err := authentication.NewSession(tx, consumer, driver.GetSessionDuration())
+		session, err := authentication.NewSession(tx, consumer, driver.GetSessionDuration(), false)
 		if err != nil {
 			return err
 		}

@@ -1,3 +1,21 @@
+export class AuthentifiedUser {
+    id: string;
+    created: string;
+    username: string;
+    fullname: string;
+    ring: string;
+
+    constructor() { }
+
+    isAdmin(): boolean {
+        return this.ring === 'ADMIN';
+    }
+
+    isMaintainer(): boolean {
+        return this.ring === 'MAINTAINER' || this.isAdmin();
+    }
+}
+
 export class User {
     id: number;
     username: string;
@@ -6,8 +24,6 @@ export class User {
     admin: boolean;
     token: string;
     password: string;
-
-    constructor() { }
 }
 
 export class UserLoginRequest {

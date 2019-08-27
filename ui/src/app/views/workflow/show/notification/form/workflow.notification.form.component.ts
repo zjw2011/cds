@@ -1,17 +1,26 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
+import { Project } from 'app/model/project.model';
+import {
+    notificationOnFailure,
+    notificationOnSuccess,
+    notificationTypes,
+    WNode,
+    WNodeType,
+    Workflow,
+    WorkflowNotification,
+    WorkflowTriggerConditionCache
+} from 'app/model/workflow.model';
 import { NotificationService } from 'app/service/notification/notification.service';
 import cloneDeep from 'lodash-es/cloneDeep';
 import { finalize, first } from 'rxjs/operators';
-import { notificationOnFailure, notificationOnSuccess, notificationTypes } from '../../../../../model/notification.model';
-import { Project } from '../../../../../model/project.model';
-import { WNode, WNodeType, Workflow, WorkflowNotification } from '../../../../../model/workflow.model';
 
 @Component({
     selector: 'app-workflow-notifications-form',
     templateUrl: './workflow.notifications.form.html',
-    styleUrls: ['./workflow.notifications.form.scss']
+    styleUrls: ['./workflow.notifications.form.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class WorkflowNotificationFormComponent {
+export class WorkflowNotificationFormComponent implements OnInit {
 
     _notification: WorkflowNotification;
     @Input('notification')
@@ -36,6 +45,7 @@ export class WorkflowNotificationFormComponent {
     selectedUsers: string;
     nodeError = false;
     loadingNotifTemplate = false;
+    triggerConditions: WorkflowTriggerConditionCache;
 
     nodes: Array<WNode>;
     _workflow: Workflow;
@@ -61,10 +71,23 @@ export class WorkflowNotificationFormComponent {
     @Input() project: Project;
     @Input() canDelete: boolean;
 
-    constructor(private _notificationService: NotificationService) {
+    constructor(private _notificationService: NotificationService, private _cd: ChangeDetectorRef) {
         this.notifOnSuccess = notificationOnSuccess;
         this.notifOnFailure = notificationOnFailure;
         this.types = notificationTypes;
+    }
+
+    ngOnInit() {
+        this.loading = true;
+        this._notificationService.getConditions(this.project.key, this.workflow.name)
+            .pipe(
+                first(),
+                finalize(() => {
+                    this.loading = false;
+                    this._cd.markForCheck();
+                })
+            )
+            .subscribe((wtc) => this.triggerConditions = wtc);
     }
 
     initNotif(): void {
@@ -104,6 +127,7 @@ export class WorkflowNotificationFormComponent {
         this.loadingNotifTemplate = true;
         this._notificationService.getNotificationTypes().pipe(first(), finalize(() => {
             this.loadingNotifTemplate = false;
+            this._cd.markForCheck();
         })).subscribe(data => {
             if (data && data[this.notification.type]) {
                 this.notification.settings = data[this.notification.type];
