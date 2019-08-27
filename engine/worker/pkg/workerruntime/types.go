@@ -3,12 +3,13 @@ package workerruntime
 import (
 	"context"
 	"errors"
+	"fmt"
 
-	"github.com/ovh/cds/sdk/cdsclient"
-	"github.com/ovh/cds/sdk/log"
+	"github.com/spf13/afero"
 
 	"github.com/ovh/cds/sdk"
-	"github.com/spf13/afero"
+	"github.com/ovh/cds/sdk/cdsclient"
+	"github.com/ovh/cds/sdk/log"
 )
 
 type DownloadArtifact struct {
@@ -43,6 +44,7 @@ const (
 	jobID contextKey = iota
 	stepOrder
 	workDir
+	keysDir
 	LevelDebug Level = "DEBUG"
 	LevelInfo  Level = "INFO"
 	LevelWarn  Level = "WARN"
@@ -54,7 +56,8 @@ type Runtime interface {
 	Register(ctx context.Context) error
 	Take(ctx context.Context, job sdk.WorkflowNodeJobRun) error
 	ProcessJob(job sdk.WorkflowNodeJobRunData) (sdk.Result, error)
-	SendLog(level Level, format string)
+	SendLog(ctx context.Context, level Level, format string)
+	InstallKey(key sdk.Variable, destinationPath string) (*KeyResponse, error)
 	Unregister() error
 	Client() cdsclient.WorkerInterface
 	Workspace() afero.Fs
@@ -77,12 +80,12 @@ func SetJobID(ctx context.Context, i int64) context.Context {
 }
 
 func StepOrder(ctx context.Context) (int, error) {
-	stepOrderStr := ctx.Value(jobID)
-	jobID, ok := stepOrderStr.(int)
+	stepOrderStr := ctx.Value(stepOrder)
+	stepOrder, ok := stepOrderStr.(int)
 	if !ok {
-		return -1, errors.New("unable to get step order")
+		return -1, fmt.Errorf("unable to get step order: got %v", stepOrder)
 	}
-	return jobID, nil
+	return stepOrder, nil
 }
 
 func SetStepOrder(ctx context.Context, i int) context.Context {
@@ -102,4 +105,19 @@ func WorkingDirectory(ctx context.Context) (afero.File, error) {
 func SetWorkingDirectory(ctx context.Context, s afero.File) context.Context {
 	log.Debug("SetWorkingDirectory> working directory is: %s", s.Name())
 	return context.WithValue(ctx, workDir, s)
+}
+
+func KeysDirectory(ctx context.Context) (afero.File, error) {
+	wdi := ctx.Value(keysDir)
+	wd, ok := wdi.(afero.File)
+	if !ok {
+		return nil, errors.New("unable to get working directory")
+	}
+	log.Debug("KeysDirectory> working directory is : %s", wd.Name())
+	return wd, nil
+}
+
+func SetKeysDirectory(ctx context.Context, s afero.File) context.Context {
+	log.Debug("SetKeysDirectory> working directory is: %s", s.Name())
+	return context.WithValue(ctx, keysDir, s)
 }

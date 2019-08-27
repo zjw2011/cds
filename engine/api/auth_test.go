@@ -69,15 +69,12 @@ func Test_postAuthSigninHandler_ShouldSuccessWithANewUser(t *testing.T) {
 	api.Router.Mux.ServeHTTP(rec, req)
 	require.Equal(t, 200, rec.Code)
 
-	u, err := user.LoadByUsername(context.TODO(), db, "fry", user.LoadOptions.WithContacts, user.LoadOptions.WithDeprecatedUser)
+	u, err := user.LoadByUsername(context.TODO(), db, "fry", user.LoadOptions.WithContacts)
 	require.NoError(t, err)
-	require.NotNil(t, u)
-
 	assert.Equal(t, "Philip J. Fry", u.Fullname)
 	assert.Equal(t, "fry@planet-express.futurama", u.GetEmail())
 
-	err = user.DeleteByID(db, u.ID)
-	require.NoError(t, err)
+	require.NoError(t, user.DeleteByID(db, u.ID))
 }
 
 func Test_postAuthSigninHandler_ShouldSuccessWithAKnownUser(t *testing.T) {
@@ -96,7 +93,10 @@ func Test_postAuthSigninHandler_ShouldSuccessWithAKnownUser(t *testing.T) {
 	api.Router.Mux.ServeHTTP(rec, req)
 	require.Equal(t, 200, rec.Code)
 
-	// Call a second time
+	expectedUser, err := user.LoadByUsername(context.TODO(), db, "fry")
+	require.NoError(t, err)
+
+	// Call a second time, same user should be used
 
 	req = assets.NewRequest(t, "POST", uri, sdk.AuthConsumerSigninRequest{
 		"username": "fry",
@@ -105,12 +105,11 @@ func Test_postAuthSigninHandler_ShouldSuccessWithAKnownUser(t *testing.T) {
 	api.Router.Mux.ServeHTTP(rec, req)
 	require.Equal(t, 200, rec.Code)
 
-	u, err := user.LoadByUsername(context.TODO(), db, "fry", user.LoadOptions.WithContacts, user.LoadOptions.WithDeprecatedUser)
+	u, err := user.LoadByUsername(context.TODO(), db, "fry")
 	require.NoError(t, err)
-	require.NotNil(t, u)
+	require.Equal(t, expectedUser.ID, u.ID)
 
-	err = user.DeleteByID(db, u.ID)
-	require.NoError(t, err)
+	require.NoError(t, user.DeleteByID(db, u.ID))
 }
 
 func Test_postAuthSigninHandler_ShouldSuccessWithAKnownUserAndAnotherConsumerType(t *testing.T) {
@@ -213,6 +212,61 @@ func Test_postAuthSigninHandler_ShouldSuccessWithAKnownUserAnotherConsumerTypeAn
 	require.NoError(t, err)
 }
 
+func Test_postAuthSigninHandler_ShouldSuccessWithAnExistingUserFromCurrentSessionAndAnotherConsumerType(t *testing.T) {
+	api, db, _, end := newTestAPI(t)
+	defer end()
+
+	// clean before test
+	u1, _ := user.LoadByUsername(context.TODO(), db, "fry")
+	if u1 != nil {
+		user.DeleteByID(db, u1.ID)
+	}
+	u2, _ := user.LoadByUsername(context.TODO(), db, "leela")
+	if u2 != nil {
+		user.DeleteByID(db, u2.ID)
+	}
+
+	uri := api.Router.GetRoute(http.MethodPost, api.postAuthSigninHandler, map[string]string{
+		"consumerType": string(sdk.ConsumerTest),
+	})
+	require.NotEmpty(t, uri)
+	req := assets.NewRequest(t, http.MethodPost, uri, sdk.AuthConsumerSigninRequest{
+		"username": "fry",
+	})
+	rec := httptest.NewRecorder()
+	api.Router.Mux.ServeHTTP(rec, req)
+	require.Equal(t, 200, rec.Code)
+
+	var res1 sdk.AuthConsumerSigninResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &res1))
+
+	// Call a second time with another consumer
+	uri = api.Router.GetRoute(http.MethodPost, api.postAuthSigninHandler, map[string]string{
+		"consumerType": string(sdk.ConsumerTest2),
+	})
+	require.NotEmpty(t, uri)
+	req = assets.NewJWTAuthentifiedRequest(t, res1.Token, http.MethodPost, uri, sdk.AuthConsumerSigninRequest{
+		"username": "leela",
+	})
+	rec = httptest.NewRecorder()
+	api.Router.Mux.ServeHTTP(rec, req)
+	require.Equal(t, 200, rec.Code)
+
+	var res2 sdk.AuthConsumerSigninResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &res2))
+
+	assert.Equal(t, res1.User.ID, res2.User.ID, "in case where we signin with an existing session, the second consumer should be linked to the current user")
+
+	cs, err := user.LoadContactsByUserIDs(context.TODO(), db, []string{res1.User.ID})
+	require.NoError(t, err)
+	require.Len(t, cs, 2)
+	assert.Equal(t, "fry@planet-express.futurama", cs[0].Value)
+	assert.Equal(t, "leela@planet-express.futurama", cs[1].Value)
+
+	// tear down
+	require.NoError(t, user.DeleteByID(db, res1.User.ID))
+}
+
 const (
 	MasterKey = `-----BEGIN PGP PUBLIC KEY BLOCK-----
 
@@ -269,6 +323,7 @@ func Test_postAuthSigninHandler_WithCorporateSSO(t *testing.T) {
 	cfg.Request.RedirectURL = "https://lolcat.host/sso/jwt"
 	cfg.Token.KeySigningKey.KeySigningKey = "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nmDMEXF1XRhYJKwYBBAHaRw8BAQdABEHVkfddwOIEFd7V0hsGrudgRuOlnV4/VSK6\nYJGFag+0HnRlc3QtbG9ja2VyIDx0ZXN0QGxvbGNhdC5ob3N0PoiQBBMWCAA4FiEE\nBN0dlUe5Vi8hx0ZsWXCoyV8Z2eQFAlxdV0YCGwMFCwkIBwIGFQoJCAsCBBYCAwEC\nHgECF4AACgkQWXCoyV8Z2eQt5gEAycwThBk4CzuQ8XtPvLA/kml3Jkclgw6ACGsP\nYOrnz+gA/2XOjnhYOA6S3sn9g4UMVtON8TofBMTTSqCdgrghu3kFuDgEXF1XRhIK\nKwYBBAGXVQEFAQEHQGlq7X9fCeXKxlmcWgT+fFJyS1MlL2uwKQteXl8yIadwAwEI\nB4h4BBgWCAAgFiEEBN0dlUe5Vi8hx0ZsWXCoyV8Z2eQFAlxdV0YCGwwACgkQWXCo\nyV8Z2eR4rgD/cPn9TStAoXc4Pa+sKgAFmG3NVCNln8FtkH5cQ1g0ouUA/AzcLTL4\nVQHT6ArvDWzJKKrh2PepZ5PVMS/Hwh/GDH4J\n=n1Ws\n-----END PGP PUBLIC KEY BLOCK-----"
 	cfg.Token.KeySigningKey.SigningKeyClaim = "key"
+	cfg.MailDomain = "lolcat.host"
 
 	api.AuthenticationDrivers[sdk.ConsumerCorporateSSO] = corpsso.NewDriver(cfg)
 

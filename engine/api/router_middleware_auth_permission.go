@@ -4,16 +4,15 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/ovh/cds/engine/api/action"
 	"github.com/ovh/cds/engine/api/authentication"
 	"github.com/ovh/cds/engine/api/cache"
-	"github.com/ovh/cds/engine/api/observability"
-	"github.com/ovh/cds/engine/api/workflow"
-
-	"github.com/ovh/cds/engine/api/action"
 	"github.com/ovh/cds/engine/api/group"
+	"github.com/ovh/cds/engine/api/observability"
 	"github.com/ovh/cds/engine/api/permission"
 	"github.com/ovh/cds/engine/api/user"
 	"github.com/ovh/cds/engine/api/workermodel"
+	"github.com/ovh/cds/engine/api/workflow"
 	"github.com/ovh/cds/engine/api/workflowtemplate"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/log"
@@ -253,8 +252,20 @@ func (api *API) checkActionPermissions(ctx context.Context, actionName string, p
 	return nil
 }
 
-func (api *API) checkActionBuiltinPermissions(ctx context.Context, permActionBuiltinName string, perm int, routeVars map[string]string) error {
-	return sdk.WrapError(sdk.ErrForbidden, "not authorized for action %s", permActionBuiltinName)
+func (api *API) checkActionBuiltinPermissions(ctx context.Context, actionName string, perm int, routeVars map[string]string) error {
+	if actionName == "" {
+		return sdk.WrapError(sdk.ErrWrongRequest, "invalid given action name")
+	}
+
+	a, err := action.LoadByTypesAndName(ctx, api.mustDB(), []string{sdk.BuiltinAction, sdk.PluginAction}, actionName)
+	if err != nil {
+		return err
+	}
+	if a == nil {
+		return sdk.WithStack(sdk.ErrNoAction)
+	}
+
+	return nil
 }
 
 func (api *API) checkTemplateSlugPermissions(ctx context.Context, templateSlug string, permissionValue int, routeVars map[string]string) error {

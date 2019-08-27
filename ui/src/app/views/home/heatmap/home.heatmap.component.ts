@@ -1,14 +1,14 @@
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ViewChild } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { EventService } from 'app/event.service';
+import { Event } from 'app/model/event.model';
+import { HeatmapSearchCriterion } from 'app/model/heatmap.model';
+import { PipelineStatus } from 'app/model/pipeline.model';
+import { ProjectFilter, TimelineFilter } from 'app/model/timeline.model';
+import { TimelineStore } from 'app/service/timeline/timeline.store';
+import { AutoUnsubscribe } from 'app/shared/decorator/autoUnsubscribe';
+import { ToastService } from 'app/shared/toast/ToastService';
 import { Subscription } from 'rxjs/Subscription';
-import { Event } from '../../../model/event.model';
-import { HeatmapSearchCriterion } from '../../../model/heatmap.model';
-import { PipelineStatus } from '../../../model/pipeline.model';
-import { ProjectFilter, TimelineFilter } from '../../../model/timeline.model';
-import { TimelineStore } from '../../../service/timeline/timeline.store';
-import { AutoUnsubscribe } from '../../../shared/decorator/autoUnsubscribe';
-import { ToastService } from '../../../shared/toast/ToastService';
 import { ToolbarComponent } from './toolbar/toolbar.component';
 
 @Component({

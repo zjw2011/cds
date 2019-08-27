@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { NgForm } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, DefaultUrlSerializer, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { AuthenticationService } from 'app/service/services.module';
 import { AutoUnsubscribe } from 'app/shared/decorator/autoUnsubscribe';
@@ -23,10 +23,11 @@ export class CallbackComponent implements OnInit {
     code: string;
     state: string;
     loading: boolean;
+    loadingSignin: boolean;
     showErrorMessage: boolean;
     showInitTokenForm: boolean;
     consumerType: string;
-
+    payloadData: any;
 
     constructor(
         private _route: ActivatedRoute,
@@ -55,7 +56,10 @@ export class CallbackComponent implements OnInit {
 
             // If the origin is cdsctl, show the code and the state for copy
             let payload = jws.JWS.parse(this.state).payloadObj;
-            if (payload.data && payload.data.Origin === 'cdsctl') {
+            if (payload.data) {
+                this.payloadData = JSON.parse(payload.data);
+            }
+            if (this.payloadData && this.payloadData.origin === 'cdsctl') {
                 this.loading = false;
                 this.showCTL = true;
                 this._cd.markForCheck();
@@ -63,7 +67,7 @@ export class CallbackComponent implements OnInit {
             }
 
             // If the first connection flag is set, show init token form
-            if (payload.data && payload.data.IsFirstConnection) {
+            if (this.payloadData && this.payloadData.is_first_connection) {
                 this.loading = false;
                 this.showInitTokenForm = true;
                 this._cd.markForCheck();
@@ -87,13 +91,21 @@ export class CallbackComponent implements OnInit {
     }
 
     sendSigninRequest(initToken?: string): void {
+        this.loadingSignin = true;
+        this._cd.markForCheck();
         this._authenticationService.signin(this.consumerType, this.code, this.state, initToken)
             .pipe(finalize(() => {
                 this.loading = false;
+                this.loadingSignin = false;
                 this._cd.markForCheck();
             }))
             .subscribe(_ => {
-                this._router.navigate(['/']);
+                if (this.payloadData && this.payloadData.redirect_uri) {
+                    let dus = new DefaultUrlSerializer();
+                    this._router.navigateByUrl(dus.parse(this.payloadData.redirect_uri));
+                } else {
+                    this._router.navigate(['/home']);
+                }
             }, () => {
                 this.showErrorMessage = true;
             });

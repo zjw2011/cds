@@ -21,18 +21,17 @@ export class WorkflowSaveAsCodeComponent {
     @Input() project: Project;
     @Input() workflow: Workflow;
     ope: Operation;
+    stateSub: Subscription;
 
     @ViewChild('saveAsCodeModal', { static: false })
     public saveAsCodeModal: ModalTemplate<boolean, boolean, void>;
     modalConfig: TemplateModalConfig<boolean, boolean, void>;
     modal: SuiActiveModal<boolean, boolean, void>;
 
-    stateSub: Subscription;
-
     constructor(
         private _modalService: SuiModalService,
-        private _eventService: EventService,
-        private _store: Store
+        private _store: Store,
+        private _eventService: EventService
     ) { }
 
     show(ope: Operation): void {

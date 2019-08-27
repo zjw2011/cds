@@ -24,7 +24,7 @@
                                     </div>
                                     <div class="field">
                                         <label for="admin">{{'user_label_ring' | translate}}</label>
-                                        <sm-select *ngIf="currentUser.isAdmin()" class="fluid search" name="admin"
+                                        <sm-select *ngIf="currentUser.isAdmin()" class="fluid search" id="admin"
                                             [disabled]="loading" [(model)]="user.ring">
                                             <option [value]="'USER'">USER</option>
                                             <option [value]="'MAINTAINER'">MAINTAINER</option>
@@ -83,11 +83,27 @@
                                     </div>
                                 </ng-container>
                                 <ng-container *ngSwitchCase="'ldap'">
-                                    <div class="center aligned header">
-                                        <i class="ui address book icon huge"></i>
-                                    </div>
-                                    <div class="center aligned description">
-                                        LDAP
+                                    <div [suiTransition]="transitionController">
+                                        <ng-container *ngIf="!showLDAPSigninForm">
+                                            <div class="center aligned header">
+                                                <i class="ui address book icon huge"></i>
+                                            </div>
+                                            <div class="center aligned description">
+                                                LDAP
+                                            </div>
+                                        </ng-container>
+                                        <ng-container *ngIf="showLDAPSigninForm">
+                                            <form class="ui form" #ldapSigninForm="ngForm">
+                                                <div class="field">
+                                                    <label>LDAP Bind*</label>
+                                                    <input type="text" name="bind" ngModel required>
+                                                </div>
+                                                <div class="field">
+                                                    <label>{{ 'user_label_password' | translate }}*</label>
+                                                    <input type="password" name="password" ngModel required>
+                                                </div>
+                                            </form>
+                                        </ng-container>
                                     </div>
                                 </ng-container>
                                 <ng-container *ngSwitchCase="'corporate-sso'">
@@ -129,9 +145,16 @@
                                         <button class="ui green button small" [class.loading]="loadingLocalReset"
                                             (click)="clickConsumerLocalReset()">{{'account_password_btn_reset' | translate}}</button>
                                     </ng-container>
+                                    <ng-container *ngSwitchCase="'ldap'">
+                                        <button *ngIf="user.id === currentUser.id" class="ui green button small"
+                                            (click)="clickConsumerLDAPSignin()">{{(showLDAPSigninForm ? 'account_btn_submit' : 'account_btn_signin') | translate}}</button>
+                                    </ng-container>
                                     <ng-container *ngSwitchDefault>
-                                        <button class="ui green button small"
-                                            (click)="clickConsumerSignin(d.type)">{{'account_btn_signin' | translate}}</button>
+                                        <a *ngIf="user.id === currentUser.id" class="ui green button small"
+                                            [routerLink]="'/auth/ask-signin/'+d.type"
+                                            [queryParams]="{redirect_uri: '/settings/user/'+user.username+'?item=authentication', require_mfa: false}">
+                                            {{'account_btn_signin' | translate}}
+                                        </a>
                                     </ng-container>
                                 </ng-container>
                             </div>
@@ -165,5 +188,6 @@
 </div>
 <app-consumer-create-modal #consumerCreateModal [user]="user" (close)="modalCreateClose($event)">
 </app-consumer-create-modal>
-<app-consumer-details-modal #consumerDetailsModal [consumer]="selectedConsumer" (close)="modalDetailsClose($event)">
+<app-consumer-details-modal #consumerDetailsModal [user]="user" [consumer]="selectedConsumer"
+    (close)="modalDetailsClose($event)">
 </app-consumer-details-modal>

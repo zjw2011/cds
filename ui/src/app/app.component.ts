@@ -3,7 +3,7 @@ import localeEN from '@angular/common/locales/en';
 import localeFR from '@angular/common/locales/fr';
 import { Component, NgZone, OnInit } from '@angular/core';
 import { Title } from '@angular/platform-browser';
-import { ActivatedRoute, NavigationEnd, ResolveEnd, ResolveStart, Router } from '@angular/router';
+import { ActivatedRoute, NavigationEnd, NavigationStart, ResolveEnd, ResolveStart, Router } from '@angular/router';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
 import { EventService } from 'app/event.service';
@@ -29,11 +29,12 @@ import { AuthenticationState } from './store/authentication.state';
 @AutoUnsubscribe()
 export class AppComponent implements OnInit {
     open: boolean;
-    isConnected = false;
+    isConnected: boolean;
+    hideNavBar: boolean;
     versionWorker: CDSWebWorker;
     zone: NgZone;
     currentVersion = 0;
-    showUIUpdatedBanner = false;
+    showUIUpdatedBanner: boolean;
     languageSubscriber: Subscription;
     themeSubscriber: Subscription;
     versionWorkerSubscription: Subscription;
@@ -94,8 +95,11 @@ export class AppComponent implements OnInit {
         });
 
         this._routerSubscription = this._router.events
-            .pipe(filter((event) => event instanceof ResolveStart || event instanceof ResolveEnd))
+            .pipe(filter((event) => event instanceof NavigationStart || event instanceof ResolveStart || event instanceof ResolveEnd))
             .subscribe(e => {
+                if (e instanceof NavigationStart) {
+                    this.hideNavBar = (e.url.indexOf('/auth') !== -1)
+                }
                 if (e instanceof ResolveStart) {
                     this.displayResolver = true;
                 }

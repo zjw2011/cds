@@ -387,15 +387,15 @@ export class EventService {
                             projectKey: event.project_key, workflowName: event.workflow_name,
                             num: event.workflow_run_num
                         }));
-                        if (this.routeParams['nodeId']) {
-                            this._store.dispatch(
-                                new GetWorkflowNodeRun({
-                                    projectKey: event.project_key,
-                                    workflowName: event.workflow_name,
-                                    num: event.workflow_run_num,
-                                    nodeRunID: this.routeParams['nodeId']
-                                }));
-                        }
+                    if (this.routeParams['nodeId']) {
+                        this._store.dispatch(
+                            new GetWorkflowNodeRun({
+                                projectKey: event.project_key,
+                                workflowName: event.workflow_name,
+                                num: event.workflow_run_num,
+                                nodeRunID: this.routeParams['nodeId']
+                            }));
+                    }
                 }
                 break;
         }
