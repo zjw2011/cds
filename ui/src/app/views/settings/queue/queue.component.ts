@@ -11,6 +11,7 @@ import { ToastService } from 'app/shared/toast/ToastService';
 import { AuthenticationState } from 'app/store/authentication.state';
 import { GetQueue } from 'app/store/queue.action';
 import { QueueState, QueueStateModel } from 'app/store/queue.state';
+import { cloneDeep } from 'lodash-es';
 import { Subscription } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
@@ -45,7 +46,7 @@ export class QueueComponent {
         this.user = this._store.selectSnapshot(AuthenticationState.user);
 
         this.queueSubscription = this._store.select(QueueState.getCurrent()).subscribe((s: QueueStateModel) => {
-            this.nodeJobRuns = s.queue;
+            this.nodeJobRuns = cloneDeep(s.queue);
             this.loading = s.loading;
             if (Array.isArray(this.nodeJobRuns) && this.nodeJobRuns.length > 0) {
                 this.requirementsList = [];
@@ -65,7 +66,7 @@ export class QueueComponent {
                         }
                         return '';
                     })());
-                    if (nj.Parameters) {
+                    if (!nj.Parameters) {
                         return null;
                     }
                     return nj.Parameters.reduce((params, param) => {
