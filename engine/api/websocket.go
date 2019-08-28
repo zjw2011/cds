@@ -284,7 +284,6 @@ func (c *websocketClient) send(ctx context.Context, db gorp.SqlExecutor, event s
 	if event.EventType == fmt.Sprintf("%T", sdk.WorkflowNodeJobRun{}) && c.filter.Queue {
 		// Do not check anything else
 
-		// OPERATION EVENT
 	} else if event.EventType == fmt.Sprintf("%T", sdk.Operation{}) && c.filter.Operation == event.OperationUUID && c.filter.ProjectKey == event.ProjectKey {
 		// Do not check anything else
 	} else {
@@ -315,13 +314,16 @@ func (c *websocketClient) send(ctx context.Context, db gorp.SqlExecutor, event s
 				return nil
 			}
 		case strings.HasPrefix(event.EventType, "sdk.EventRunWorkflow"):
-			// WORKFLOW RUN EVENT
+			if event.ProjectKey != c.filter.ProjectKey || event.WorkflowName != c.filter.WorkflowName {
+				return nil
+			}
+
 			if c.filter.WorkflowRunNumber != 0 && event.WorkflowRunNum != c.filter.WorkflowRunNumber {
 				return nil
 			}
-			// WORKFLOW NODE RUN EVENT
-			if c.filter.WorkflowNodeRunID != 0 && event.WorkflowRunNum != c.filter.WorkflowRunNumber {
-				// TODO check node run event   // ID node RUN, SUbnumber
+
+			if c.filter.WorkflowNodeRunID != 0 && event.WorkflowNodeRunID != c.filter.WorkflowNodeRunID {
+				return nil
 			}
 		default:
 			return nil
