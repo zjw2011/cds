@@ -180,7 +180,7 @@ func SyncAsCodeEvent(ctx context.Context, db gorp.SqlExecutor, store cache.Store
 func UpdateWorkflowAsCodeResult(ctx context.Context, db *gorp.DbMap, store cache.Store, p *sdk.Project, ope *sdk.Operation, wf *sdk.Workflow, u sdk.Identifiable) {
 	counter := 0
 	defer func() {
-		event.PublishOperationEvent(*ope, u)
+		event.PublishOperationEvent(p.Key, *ope, u)
 	}()
 	for {
 		counter++

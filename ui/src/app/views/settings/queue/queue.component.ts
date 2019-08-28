@@ -74,6 +74,7 @@ export class QueueComponent {
                     }, {});
                 });
             }
+            this._cd.markForCheck();
         });
 
         this.refreshQueue();

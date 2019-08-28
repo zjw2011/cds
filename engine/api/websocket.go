@@ -25,13 +25,13 @@ import (
 var upgrader = websocket.Upgrader{} // use default options
 
 type websocketClient struct {
-	UUID         string
-	AuthConsumer *sdk.AuthConsumer
-	isAlive      *abool.AtomicBool
-	con          *websocket.Conn
-	mutex        sync.Mutex
-	filter       WebsocketFilter
-	messageChan  chan WebsocketFilter
+	UUID             string
+	AuthConsumer     *sdk.AuthConsumer
+	isAlive          *abool.AtomicBool
+	con              *websocket.Conn
+	mutex            sync.Mutex
+	filter           WebsocketFilter
+	updateFilterChan chan WebsocketFilter
 }
 
 type websocketBroker struct {
@@ -181,11 +181,11 @@ func (b *websocketBroker) ServeHTTP() service.Handler {
 		defer c.Close()
 
 		client := websocketClient{
-			UUID:         sdk.UUID(),
-			AuthConsumer: getAPIConsumer(r.Context()),
-			isAlive:      abool.NewBool(true),
-			con:          c,
-			messageChan:  make(chan WebsocketFilter, 10),
+			UUID:             sdk.UUID(),
+			AuthConsumer:     getAPIConsumer(r.Context()),
+			isAlive:          abool.NewBool(true),
+			con:              c,
+			updateFilterChan: make(chan WebsocketFilter, 10),
 		}
 		b.chanAddClient <- &client
 
@@ -208,7 +208,7 @@ func (b *websocketBroker) ServeHTTP() service.Handler {
 				continue
 			}
 			// Send message to client
-			client.messageChan <- msg
+			client.updateFilterChan <- msg
 		}
 		return nil
 	}
@@ -220,7 +220,7 @@ func (c *websocketClient) read(ctx context.Context, db *gorp.DbMap) {
 		case <-ctx.Done():
 			log.Debug("events.Http: context done")
 			return
-		case m := <-c.messageChan:
+		case m := <-c.updateFilterChan:
 			if err := c.updateEventFilter(ctx, db, m); err != nil {
 				log.Error("websocketClient.read: unable to update event filter: %v", err)
 				msg := WebsocketEvent{
@@ -284,8 +284,8 @@ func (c *websocketClient) send(ctx context.Context, db gorp.SqlExecutor, event s
 	if event.EventType == fmt.Sprintf("%T", sdk.WorkflowNodeJobRun{}) && !c.filter.Queue {
 		return nil
 		// OPERATION EVENT
-	} else if event.EventType == fmt.Sprintf("%T", sdk.Operation{}) && c.filter.Operation != event.OperationUUID {
-		return nil
+	} else if event.EventType == fmt.Sprintf("%T", sdk.Operation{}) && c.filter.Operation == event.OperationUUID && c.filter.ProjectKey == event.ProjectKey {
+		// Do not check anything else
 	} else {
 		switch {
 		// PROJECT EVENT

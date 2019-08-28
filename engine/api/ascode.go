@@ -71,9 +71,10 @@ func (api *API) postImportAsCodeHandler() service.Handler {
 		}
 		ope.RepositoryStrategy.SSHKeyContent = ""
 
+		consumer := getAPIConsumer(ctx)
 		sdk.GoRoutine(context.Background(), fmt.Sprintf("ImportAsCodeResult-%s", ope.UUID), func(ctx context.Context) {
 			operation.Poller(ctx, api.mustDB(), ope, 300)
-			event.PublishOperationEvent(*ope, getAPIConsumer(ctx))
+			event.PublishOperationEvent(p.Key, *ope, consumer)
 		}, api.PanicDump())
 
 		return service.WriteJSON(w, ope, http.StatusCreated)

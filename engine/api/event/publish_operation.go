@@ -10,7 +10,7 @@ import (
 )
 
 // publishOperationEvent publish operation event
-func PublishOperationEvent(payload sdk.Operation, u sdk.Identifiable) {
+func PublishOperationEvent(projectKey string, payload sdk.Operation, u sdk.Identifiable) {
 	event := sdk.Event{
 		Timestamp:     time.Now(),
 		Hostname:      hostname,
@@ -18,6 +18,7 @@ func PublishOperationEvent(payload sdk.Operation, u sdk.Identifiable) {
 		EventType:     fmt.Sprintf("%T", payload),
 		Payload:       structs.Map(payload),
 		OperationUUID: payload.UUID,
+		ProjectKey:    projectKey,
 	}
 	if u != nil {
 		event.Username = u.GetUsername()

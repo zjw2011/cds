@@ -111,8 +111,7 @@ export class AppComponent implements OnInit {
         this._routerNavEndSubscription = this._router.events
             .pipe(filter((event) => event instanceof NavigationEnd))
             .pipe(map((e: NavigationEnd) => {
-                if (this._eventService.isWebsocketConnected()
-                    && (!this.previousURL || this.previousURL.split('?')[0] !== e.url.split('?')[0])) {
+                if ((!this.previousURL || this.previousURL.split('?')[0] !== e.url.split('?')[0])) {
                     this.previousURL = e.url;
                     this.manageWebsocketFilterByUrl(e.url);
                     return;

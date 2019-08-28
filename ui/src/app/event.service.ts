@@ -70,13 +70,15 @@ export class EventService {
             url: `${protocol}//${host}${href}/cdsapi/ws`,
             openObserver: {
                 next: value => {
-                    if (value.type === 'open' && this.currentFilter) {
+                    if (value.type === 'open') {
                         this.connected = true;
-                        this.websocket.next(this.currentFilter);
+                        if (this.currentFilter) {
+                            this.websocket.next(this.currentFilter);
+                        }
+
                     }
                 }
-            }
-        });
+            }});
 
         this.websocket
             .pipe(retryWhen(errors => errors.pipe(delay(5000))))
@@ -93,10 +95,6 @@ export class EventService {
             });
     }
 
-    isWebsocketConnected(): boolean {
-        return this.connected;
-    }
-
     addOperationFilter(uuid: string) {
         this.currentFilter.operation = uuid;
         this.websocket.next(this.currentFilter);
@@ -104,17 +102,18 @@ export class EventService {
 
     updateFilter(f: WebSocketMessage): void {
         this.currentFilter = f;
-        this.websocket.next(this.currentFilter);
+        if (this.connected) {
+            this.websocket.next(this.currentFilter);
+        }
     }
 
     manageEvent(event: Event): void {
-        console.log(event.type_event, event.project_key, event.workflow_name,
-            event.application_name, event.pipeline_name, event.environment_name);
         if (!event || !event.type_event) {
             return
         }
         if (event.type_event.indexOf(EventType.OPERATION) === 0) {
-            this._store.dispatch(new UpdateOperation({ope: <Operation>event.payload}))
+            let ope = Operation.FromWS(event.payload);
+            this._store.dispatch(new UpdateOperation({ope: ope}))
         }
         if (event.type_event.indexOf(EventType.RUN_WORKFLOW_NODE_JOB) === 0) {
             if (event.payload instanceof EventWorkflowNodeJobRunPayload) {
