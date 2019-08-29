@@ -25,6 +25,7 @@ import { finalize } from 'rxjs/operators';
 export class QueueComponent {
     queueSubscription: Subscription;
     nodeJobRuns: Array<EventWorkflowNodeJobRunPayload> = [];
+    filteredNodeJobRuns: Array<EventWorkflowNodeJobRunPayload> = [];
     user: AuthentifiedUser;
     parametersMaps: Array<{}> = [];
     requirementsList: Array<string> = [];
@@ -47,6 +48,7 @@ export class QueueComponent {
 
         this.queueSubscription = this._store.select(QueueState.getCurrent()).subscribe((s: QueueStateModel) => {
             this.nodeJobRuns = cloneDeep(s.queue);
+            this.filterJobs();
             this.loading = s.loading;
             if (Array.isArray(this.nodeJobRuns) && this.nodeJobRuns.length > 0) {
                 this.requirementsList = [];
@@ -85,6 +87,10 @@ export class QueueComponent {
         }, <PathItem>{
             translate: 'admin_queue_title'
         }];
+    }
+
+    filterJobs(): void {
+        this.filteredNodeJobRuns = this.nodeJobRuns.filter(njr => this.status.find(s => s === njr.Status));
     }
 
     refreshQueue(): void {

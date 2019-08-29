@@ -51,7 +51,7 @@ export class EventType {
 
     static RUN_WORKFLOW_PREFIX = 'sdk.EventRunWorkflow';
     static RUN_WORKFLOW_NODE = 'sdk.EventRunWorkflowNode';
-    static RUN_WORKFLOW_NODE_JOB = 'sdk.WorkflowNodeJobRun';
+    static RUN_WORKFLOW_NODE_JOB = 'sdk.EventRunWorkflowJob';
 
 
     static BROADCAST_PREFIX = 'sdk.EventBroadcast';

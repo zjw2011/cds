@@ -57,10 +57,17 @@ export class QueueState {
         let currentQueue = cloneDeep(state.queue);
 
         let jobIndex = currentQueue.findIndex(j => j.ID === action.payload.job.ID);
-        if (jobIndex) {
-            currentQueue[jobIndex] = action.payload.job
+        if (jobIndex !== -1) {
+            if (action.payload.job.Status === 'Waiting' || action.payload.job.Status === 'Building') {
+                currentQueue[jobIndex] = action.payload.job
+            } else {
+                currentQueue.splice(jobIndex, 1);
+            }
+
         } else {
-            currentQueue.push(action.payload.job);
+            if (action.payload.job.Status === 'Waiting' || action.payload.job.Status === 'Building') {
+                currentQueue.push(action.payload.job);
+            }
         }
         ctx.setState({
             ...state,

@@ -665,6 +665,7 @@
   "integration_deployment": "deployment",
   "integration_storage": "storage",
   "queue_monitoring": "Queue Monitoring",
+  "queue_no_job": "There is no job",
   "repo_name": "Repository",
   "repoman_delete_msg_ok": "Repository manager is detached from the project",
   "repoman_delete_confirm_message": "Are you sure to delete this repository manager from your project?",

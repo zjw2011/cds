@@ -665,6 +665,7 @@
   "integration_event": "évènement",
   "integration_storage": "stockage",
   "queue_monitoring": "Queue Monitoring",
+  "queue_no_job": "Il n'y a aucun job",
   "repo_name": "Nom du dépôt",
   "repoman_delete_msg_ok": "Le gestionnaire de dépôt n'est plus lié au projet",
   "repoman_delete_confirm_message": "Êtes-vous sur de supprimer ce gestionnaire de dépôt du projet ?",

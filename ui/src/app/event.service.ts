@@ -113,15 +113,12 @@ export class EventService {
         }
         if (event.type_event.indexOf(EventType.OPERATION) === 0) {
             let ope = Operation.FromWS(event.payload);
-            this._store.dispatch(new UpdateOperation({ope: ope}))
+            this._store.dispatch(new UpdateOperation({ope: ope}));
+            return;
         }
         if (event.type_event.indexOf(EventType.RUN_WORKFLOW_NODE_JOB) === 0) {
-            if (event.payload instanceof EventWorkflowNodeJobRunPayload) {
-                this._store.dispatch(new UpdateQueue({ job: event.payload }))
-            } else {
-                // TODO Remove after test
-                console.log('WRONG PAYLOAD FOR NODE JOB RUN', event.payload);
-            }
+            this._store.dispatch(new UpdateQueue({ job: <EventWorkflowNodeJobRunPayload>event.payload }));
+            return;
         }
         if (event.type_event.indexOf(EventType.PROJECT_PREFIX) === 0 || event.type_event.indexOf(EventType.ENVIRONMENT_PREFIX) === 0 ||
             event.type_event === EventType.APPLICATION_ADD || event.type_event === EventType.APPLICATION_UPDATE ||
