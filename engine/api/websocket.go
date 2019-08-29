@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/go-gorp/gorp"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-gorp/gorp"
 	"github.com/gorilla/websocket"
 	"github.com/tevino/abool"
 
@@ -30,8 +30,8 @@ type websocketClient struct {
 	isAlive          *abool.AtomicBool
 	con              *websocket.Conn
 	mutex            sync.Mutex
-	filter           WebsocketFilter
-	updateFilterChan chan WebsocketFilter
+	filter           sdk.WebsocketFilter
+	updateFilterChan chan sdk.WebsocketFilter
 }
 
 type websocketBroker struct {
@@ -42,25 +42,6 @@ type websocketBroker struct {
 	messages         chan sdk.Event
 	chanAddClient    chan *websocketClient
 	chanRemoveClient chan string
-}
-
-type WebsocketFilter struct {
-	ProjectKey        string `json:"project_key"`
-	ApplicationName   string `json:"application_name"`
-	PipelineName      string `json:"pipeline_name"`
-	EnvironmentName   string `json:"environment_name"`
-	WorkflowName      string `json:"workflow_name"`
-	WorkflowRunNumber int64  `json:"workflow_run_num"`
-	WorkflowNodeRunID int64  `json:"workflow_node_run_id"`
-	Favorites         bool   `json:"favorites"`
-	Queue             bool   `json:"queue"`
-	Operation         string `json:"operation"`
-}
-
-type WebsocketEvent struct {
-	Status string    `json:"status"`
-	Error  string    `json:"error"`
-	Event  sdk.Event `json:"event"`
 }
 
 //Init the websocketBroker
@@ -185,22 +166,26 @@ func (b *websocketBroker) ServeHTTP() service.Handler {
 			AuthConsumer:     getAPIConsumer(r.Context()),
 			isAlive:          abool.NewBool(true),
 			con:              c,
-			updateFilterChan: make(chan WebsocketFilter, 10),
+			updateFilterChan: make(chan sdk.WebsocketFilter, 10),
 		}
 		b.chanAddClient <- &client
 
-		go client.read(ctx, b.dbFunc())
+		sdk.GoRoutine(ctx, fmt.Sprintf("readUpdateFilterChan-%s-%s", client.AuthConsumer.AuthentifiedUser.Username, client.UUID), func(ctx context.Context) {
+			client.readUpdateFilterChan(ctx, b.dbFunc())
+		})
 
-		tick := time.NewTicker(100 * time.Millisecond)
-		defer tick.Stop()
 		for {
-			var msg WebsocketFilter
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			var msg sdk.WebsocketFilter
 			_, message, err := c.ReadMessage()
 			if err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 					log.Warning("websocket error: %v", err)
 				}
-				log.Warning("client disconnected")
+				log.Debug("%s disconnected", client.AuthConsumer.AuthentifiedUser.Username)
 				break
 			}
 			if err := json.Unmarshal(message, &msg); err != nil {
@@ -214,7 +199,7 @@ func (b *websocketBroker) ServeHTTP() service.Handler {
 	}
 }
 
-func (c *websocketClient) read(ctx context.Context, db *gorp.DbMap) {
+func (c *websocketClient) readUpdateFilterChan(ctx context.Context, db *gorp.DbMap) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -223,7 +208,7 @@ func (c *websocketClient) read(ctx context.Context, db *gorp.DbMap) {
 		case m := <-c.updateFilterChan:
 			if err := c.updateEventFilter(ctx, db, m); err != nil {
 				log.Error("websocketClient.read: unable to update event filter: %v", err)
-				msg := WebsocketEvent{
+				msg := sdk.WebsocketEvent{
 					Status: "KO",
 					Error:  sdk.Cause(err).Error(),
 				}
@@ -234,7 +219,7 @@ func (c *websocketClient) read(ctx context.Context, db *gorp.DbMap) {
 	}
 }
 
-func (c *websocketClient) updateEventFilter(ctx context.Context, db gorp.SqlExecutor, m WebsocketFilter) error {
+func (c *websocketClient) updateEventFilter(ctx context.Context, db gorp.SqlExecutor, m sdk.WebsocketFilter) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -264,6 +249,9 @@ func (c *websocketClient) updateEventFilter(ctx context.Context, db gorp.SqlExec
 		c.filter = m
 	}
 
+	// Subscribe to queue
+	c.filter.Queue = m.Queue
+
 	return nil
 }
 
@@ -281,7 +269,7 @@ func (c *websocketClient) send(ctx context.Context, db gorp.SqlExecutor, event s
 		return nil
 	}
 
-	if event.EventType == fmt.Sprintf("%T", sdk.WorkflowNodeJobRun{}) && c.filter.Queue {
+	if event.EventType == fmt.Sprintf("%T", sdk.EventRunWorkflowJob{}) && c.filter.Queue {
 		// Do not check anything else
 
 	} else if event.EventType == fmt.Sprintf("%T", sdk.Operation{}) && c.filter.Operation == event.OperationUUID && c.filter.ProjectKey == event.ProjectKey {
@@ -330,7 +318,7 @@ func (c *websocketClient) send(ctx context.Context, db gorp.SqlExecutor, event s
 		}
 	}
 
-	msg := WebsocketEvent{
+	msg := sdk.WebsocketEvent{
 		Status: "OK",
 		Event:  event,
 	}
