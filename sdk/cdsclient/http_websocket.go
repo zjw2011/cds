@@ -16,6 +16,8 @@ import (
 )
 
 func (c *client) RequestWebsocket(ctx context.Context, path string, msgToSend <-chan sdk.WebsocketFilter, msgReceived chan<- sdk.WebsocketEvent) error {
+	wsContext, wsContextCancel := context.WithCancel(ctx)
+
 	// Checks that current session_token is still valid
 	// If not, challenge a new one against the authenticationToken
 	if !c.config.HasValidSessionToken() && c.config.BuitinConsumerAuthenticationToken != "" {
@@ -27,8 +29,8 @@ func (c *client) RequestWebsocket(ctx context.Context, path string, msgToSend <-
 	}
 
 	labels := pprof.Labels("path", path, "method", "GET")
-	ctx = pprof.WithLabels(ctx, labels)
-	pprof.SetGoroutineLabels(ctx)
+	wsContext = pprof.WithLabels(wsContext, labels)
+	pprof.SetGoroutineLabels(wsContext)
 
 	uHost, err := url.Parse(c.config.Host)
 	if err != nil {
@@ -53,10 +55,16 @@ func (c *client) RequestWebsocket(ctx context.Context, path string, msgToSend <-
 	defer con.Close()
 
 	// Message to send
-	sdk.GoRoutine(ctx, fmt.Sprintf("RequestWebsocket-%s-%s", c.config.User, sdk.UUID()), func(ctx context.Context) {
-		for i := range msgToSend {
-			if err := con.WriteJSON(i); err != nil {
-				log.Error("ws: unable to send message: %v", err)
+	sdk.GoRoutine(wsContext, fmt.Sprintf("RequestWebsocket-%s-%s", c.config.User, sdk.UUID()), func(ctx context.Context) {
+		for {
+			select {
+			case <-ctx.Done():
+				log.Warning("Leaving....")
+				return
+			case m := <-msgToSend:
+				if err := con.WriteJSON(m); err != nil {
+					log.Error("ws: unable to send message: %v", err)
+				}
 			}
 		}
 	})
@@ -67,7 +75,12 @@ func (c *client) RequestWebsocket(ctx context.Context, path string, msgToSend <-
 		}
 		_, message, err := con.ReadMessage()
 		if err != nil {
-			log.Error("ws: unable to read message: %v", err)
+			if websocket.IsCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Warning("websocket error: %v", err)
+				wsContextCancel()
+				return err
+			}
+			log.Error("ws: unable to read this fucking message: %v", err)
 			continue
 		}
 		var wsEvent sdk.WebsocketEvent
