@@ -9,6 +9,7 @@ import { NgxChartsModule } from '@swimlane/ngx-charts';
 import { ConditionsComponent } from 'app/shared/conditions/conditions.component';
 import { GroupFormComponent } from 'app/shared/group/form/group.form.component';
 import { AutoFocusInputComponent } from 'app/shared/input/autofocus/autofocus.input.component';
+import { UpdateAscodeComponent } from 'app/shared/modal/save-as-code/update.ascode.component';
 import { WorkflowHookMenuEditComponent } from 'app/shared/workflow/menu/edit-hook/menu.edit.hook.component';
 import { WorkflowWizardNodeConditionComponent } from 'app/shared/workflow/wizard/conditions/wizard.conditions.component';
 import { WorkflowWizardOutgoingHookComponent } from 'app/shared/workflow/wizard/outgoinghook/wizard.outgoinghook.component';
@@ -176,6 +177,7 @@ import { ZoneComponent } from './zone/zone.component';
         TabsComponent,
         TokenListComponent,
         TruncatePipe,
+        UpdateAscodeComponent,
         UploadButtonComponent,
         UsageApplicationsComponent,
         UsageComponent,

@@ -22,6 +22,17 @@
     <!-- Add trigger -->
     <app-workflow-trigger [loading]="loading" [project]="project" [workflow]="workflow" [source]="node"
         (triggerEvent)="updateWorkflow($event, workflowTrigger.modal)" #workflowTrigger></app-workflow-trigger>
+
+    <!-- Update as code -->
+    <ng-container *ngIf="workflow.from_repository">
+        <app-update-ascode
+                [project]="project"
+                [appName]="workflow.applications[workflow.workflow_data.node.context.application_id].name"
+                [name]="workflow.name"
+                #updateAsCode></app-update-ascode>
+    </ng-container>
+
+
     <!-- Add hook -->
     <app-hook-modal [loading]="loading" [project]="project" [workflow]="workflow" [node]="node"
         (hookEvent)="updateHook($event, workflowAddHook.modal)" #workflowAddHook></app-hook-modal>

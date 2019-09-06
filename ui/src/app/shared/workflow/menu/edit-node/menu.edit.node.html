@@ -8,7 +8,7 @@
         </ng-container>
         <ng-container *ngIf="node && !noderun">
             <a class="item" (click)="sendEvent('pipeline')"
-                [class.disabled]="(workflow.from_repository && workflow.from_repository.length > 0) || readonly">
+                [class.disabled]="readonly">
                     {{ 'workflow_node_trigger_add' | translate }}
             </a>
             <a class="item" (click)="sendEvent('parent')"

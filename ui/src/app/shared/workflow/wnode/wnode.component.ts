@@ -10,6 +10,7 @@ import { WNode, WNodeHook, WNodeJoin, WNodeTrigger, WNodeType, Workflow } from '
 import { WorkflowNodeRun, WorkflowRun } from 'app/model/workflow.run.model';
 import { WorkflowCoreService } from 'app/service/workflow/workflow.core.service';
 import { AutoUnsubscribe } from 'app/shared/decorator/autoUnsubscribe';
+import { UpdateAscodeComponent } from 'app/shared/modal/save-as-code/update.ascode.component';
 import { ToastService } from 'app/shared/toast/ToastService';
 import { WorkflowWNodeMenuEditComponent } from 'app/shared/workflow/menu/edit-node/menu.edit.node.component';
 import { WorkflowDeleteNodeComponent } from 'app/shared/workflow/modal/delete/workflow.node.delete.component';
@@ -70,6 +71,8 @@ export class WorkflowWNodeComponent implements OnInit {
     workflowAddHook: WorkflowHookModalComponent;
     @ViewChild('nodeEditModal', { static: false })
     nodeEditModal: WorkflowNodeEditModalComponent;
+    @ViewChild('updateAsCode', {static: false})
+    updateAsCodeModal: UpdateAscodeComponent;
 
     constructor(
         private _activatedRoute: ActivatedRoute,
@@ -306,6 +309,11 @@ export class WorkflowWNodeComponent implements OnInit {
     }
 
     updateWorkflow(w: Workflow, modal: SuiActiveModal<boolean, boolean, void>): void {
+        if (w.from_repository && w.from_repository !== '') {
+            modal.approve(true);
+            this.updateWorkflowAsCode(w);
+            return;
+        }
         this.loading = true;
         this._store.dispatch(new UpdateWorkflow({
             projectKey: this.project.key,
@@ -322,6 +330,12 @@ export class WorkflowWNodeComponent implements OnInit {
                     this.node.hooks.pop();
                 }
             });
+    }
+
+    updateWorkflowAsCode(w: Workflow): void {
+        if (this.updateAsCodeModal) {
+            this.updateAsCodeModal.show(w, 'workflow');
+        }
     }
 
     linkJoin(): void {
