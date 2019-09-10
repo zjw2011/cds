@@ -645,7 +645,7 @@ func NodeBuildParametersFromWorkflow(ctx context.Context, db gorp.SqlExecutor, s
 	}
 
 	res := []sdk.Parameter{}
-	if len(res) == 0 {
+	if len(res) == 0 && refNode != nil {
 		var err error
 		res, err = GetBuildParameterFromNodeContext(proj, wf, runContext, refNode.Context.DefaultPipelineParameters, refNode.Context.DefaultPayload, nil)
 		if err != nil {
