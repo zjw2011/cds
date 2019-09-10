@@ -26,6 +26,8 @@ const (
 	TypeWorkflowHook       = "Workflow"
 	TypeOutgoingWebHook    = "OutgoingWebhook"
 	TypeOutgoingWorkflow   = "OutgoingWorkflow"
+	TypeOutgoingKafka      = "OutgoingKafka"
+	TypeOutgoingRabbitMQ   = "OutgoingRabbitMQ"
 
 	GithubHeader         = "X-Github-Event"
 	GitlabHeader         = "X-Gitlab-Event"
@@ -259,6 +261,10 @@ func (s *Service) startTask(ctx context.Context, t *sdk.Task) (*sdk.TaskExecutio
 		return nil, s.startRabbitMQHook(t)
 	case TypeOutgoingWebHook:
 		return s.startOutgoingWebHookTask(t)
+	case TypeOutgoingKafka:
+		return s.startOutgoingKafkaTask(t)
+	case TypeOutgoingRabbitMQ:
+		return s.startOutgoingRabbitMQTask(t)
 	case TypeOutgoingWorkflow:
 		return s.startOutgoingWorkflowTask(t)
 	case TypeGerrit:
@@ -391,8 +397,12 @@ func (s *Service) doTask(ctx context.Context, t *sdk.Task, e *sdk.TaskExecution)
 		_, err = s.doBranchDeletionTaskExecution(e)
 	case e.Kafka != nil && e.Type == TypeKafka:
 		h, err = s.doKafkaTaskExecution(e)
+	case e.Kafka != nil && e.Type == TypeOutgoingKafka:
+		err = s.doOutgoingKafkaTaskExecution(e)
 	case e.RabbitMQ != nil && e.Type == TypeRabbitMQ:
 		h, err = s.doRabbitMQTaskExecution(e)
+	case e.RabbitMQ != nil && e.Type == TypeOutgoingRabbitMQ:
+		err = s.doOutgoingRabbitMQTaskExecution(e)
 	default:
 		err = fmt.Errorf("Unsupported task type %s", e.Type)
 	}

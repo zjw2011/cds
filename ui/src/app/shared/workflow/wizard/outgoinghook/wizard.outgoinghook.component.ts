@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { Store } from '@ngxs/store';
+import { ProjectIntegration } from 'app/model/integration.model';
 import { PermissionValue } from 'app/model/permission.model';
 import { IdName, Project } from 'app/model/project.model';
 import { WorkflowHookModel } from 'app/model/workflow.hook.model';
@@ -61,6 +62,8 @@ export class WorkflowWizardOutgoingHookComponent implements OnInit {
     availableHooks: Array<WNodeHook>;
     invalidJSON = false;
     outgoing_default_payload: {};
+    selectedIntegration: ProjectIntegration;
+    availableIntegrations: Array<ProjectIntegration>;
     loading = false;
     codeMirrorSkipChange = true;
     themeSubscription: Subscription;
@@ -123,6 +126,14 @@ export class WorkflowWizardOutgoingHookComponent implements OnInit {
         this._outgoingHook.outgoing_hook.hook_model_id = this.selectedOutgoingHookModel.id;
         this._outgoingHook.outgoing_hook.config = cloneDeep(this.selectedOutgoingHookModel.default_config);
         this.displayConfig = Object.keys(this._outgoingHook.outgoing_hook.config).length !== 0;
+
+        this.availableIntegrations = this.project.integrations.filter(pf => pf.model.hook);
+        if (this._outgoingHook.outgoing_hook && this._outgoingHook.outgoing_hook.config
+            && this._outgoingHook.outgoing_hook.config['integration']) {
+            this.selectedIntegration = this.project.integrations.find(
+                pf => pf.name === this._outgoingHook.outgoing_hook.config['integration'].value
+            );
+        }
 
         // Specific behavior for the 'workflow' hooks
         if (this.selectedOutgoingHookModel.name === 'Workflow') {
@@ -190,6 +201,18 @@ export class WorkflowWizardOutgoingHookComponent implements OnInit {
                 this.outgoinghookChange.emit(false);
                 this._toast.success('', this._translate.instant('workflow_updated'));
             });
+    }
+
+    updateIntegration(): void {
+        Object.keys(this._outgoingHook.outgoing_hook.config).forEach(k => {
+            if (k === 'integration') {
+                this._outgoingHook.outgoing_hook.config[k].value = this.selectedIntegration.name;
+            } else {
+                if (this.selectedIntegration.config[k]) {
+                    this._outgoingHook.outgoing_hook.config[k] = cloneDeep(this.selectedIntegration.config[k])
+                }
+            }
+        });
     }
 
     changeCodeMirror(code: string) {

@@ -90,6 +90,8 @@ func LoadProjectIntegrationsByKeyAndType(db gorp.SqlExecutor, key string, integr
 			query += " AND integration_model.storage = true"
 		case sdk.IntegrationTypeHook:
 			query += " AND integration_model.hook = true"
+		case sdk.IntegrationTypeOutgoingHook:
+			query += " AND integration_model.outgoing_hook = true"
 		case sdk.IntegrationTypeDeployment:
 			query += " AND integration_model.deployment = true"
 		}

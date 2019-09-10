@@ -101,7 +101,7 @@ func (api *API) getWorkflowHookModelsHandler() service.Handler {
 		hasKafka := false
 		for _, integration := range p.Integrations {
 			if integration.Model.Hook {
-				hasKafka = true
+				hasKafka = true // TODO yesnault - kafka only??
 				break
 			}
 		}

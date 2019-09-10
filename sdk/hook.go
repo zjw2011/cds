@@ -35,6 +35,7 @@ const (
 	RabbitMQHookModelExchangeType = "exchange_type"
 	RabbitMQHookModelExchangeName = "exchange_name"
 	RabbitMQHookModelConsumerTag  = "consumer_tag"
+	RabbitMQHookModelContentType  = "content_type"
 )
 
 // Here are the default hooks
@@ -53,6 +54,8 @@ var (
 	BuiltinOutgoingHookModels = []*WorkflowHookModel{
 		&OutgoingWebHookModel,
 		&OutgoingWorkflowModel,
+		&OutgoingKafkaHookModel,
+		&OutgoingRabbitMQModel,
 	}
 
 	KafkaHookModel = WorkflowHookModel{
@@ -258,6 +261,76 @@ var (
 			},
 			Payload: {
 				Value:        "{}",
+				Configurable: true,
+				Type:         HookConfigTypeString,
+			},
+		},
+	}
+
+	OutgoingKafkaHookModel = WorkflowHookModel{
+		Author:     "CDS",
+		Type:       WorkflowHookModelBuiltin,
+		Identifier: "github.com/ovh/cds/hook/builtin/outgoing_kafka",
+		Name:       KafkaHookModelName,
+		Icon:       "Linkify",
+		DefaultConfig: WorkflowNodeHookConfig{
+			HookModelIntegration: {
+				Value:        "",
+				Configurable: true,
+				Type:         HookConfigTypeIntegration,
+			},
+			KafkaHookModelTopic: {
+				Value:        "",
+				Configurable: true,
+				Type:         HookConfigTypeString,
+			},
+			Payload: {
+				Value:        "",
+				Configurable: true,
+				Type:         HookConfigTypeString,
+			},
+		},
+	}
+
+	OutgoingRabbitMQModel = WorkflowHookModel{
+		Author:     "CDS",
+		Type:       WorkflowHookModelBuiltin,
+		Identifier: "github.com/ovh/cds/hook/builtin/outgoing_rabbitmq",
+		Name:       RabbitMQHookModelName,
+		Icon:       "Linkify",
+		DefaultConfig: WorkflowNodeHookConfig{
+			HookModelIntegration: {
+				Value:        "",
+				Configurable: true,
+				Type:         HookConfigTypeIntegration,
+			},
+			RabbitMQHookModelQueue: {
+				Value:        "",
+				Configurable: true,
+				Type:         HookConfigTypeString,
+			},
+			RabbitMQHookModelExchangeType: {
+				Value:        "",
+				Configurable: true,
+				Type:         HookConfigTypeString,
+			},
+			RabbitMQHookModelExchangeName: {
+				Value:        "",
+				Configurable: true,
+				Type:         HookConfigTypeString,
+			},
+			RabbitMQHookModelBindingKey: {
+				Value:        "",
+				Configurable: true,
+				Type:         HookConfigTypeString,
+			},
+			RabbitMQHookModelContentType: {
+				Value:        "",
+				Configurable: true,
+				Type:         HookConfigTypeString,
+			},
+			Payload: {
+				Value:        "",
 				Configurable: true,
 				Type:         HookConfigTypeString,
 			},

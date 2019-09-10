@@ -35,12 +35,13 @@ var (
 			},
 			"topic": IntegrationConfigValue{
 				Type:        IntegrationConfigTypeString,
-				Description: "This is mandatory only if you want to use Event Integration",
+				Description: "This is mandatory only if you want to use Outgoing or Event Integration",
 			},
 		},
-		Disabled: false,
-		Hook:     true,
-		Event:    true,
+		Disabled:     false,
+		Hook:         true,
+		OutgoingHook: true,
+		Event:        true,
 	}
 	// RabbitMQIntegration represents a kafka integration
 	RabbitMQIntegration = IntegrationModel{
@@ -59,8 +60,9 @@ var (
 				Type: IntegrationConfigTypePassword,
 			},
 		},
-		Disabled: false,
-		Hook:     true,
+		Disabled:     false,
+		Hook:         true,
+		OutgoingHook: true,
 	}
 	// OpenstackIntegration represents an openstack integration
 	OpenstackIntegration = IntegrationModel{
@@ -131,11 +133,12 @@ var (
 type IntegrationType string
 
 const (
-	IntegrationTypeEvent      = IntegrationType("event")
-	IntegrationTypeCompute    = IntegrationType("compute")
-	IntegrationTypeHook       = IntegrationType("hook")
-	IntegrationTypeStorage    = IntegrationType("storage")
-	IntegrationTypeDeployment = IntegrationType("deployment")
+	IntegrationTypeEvent        = IntegrationType("event")
+	IntegrationTypeCompute      = IntegrationType("compute")
+	IntegrationTypeHook         = IntegrationType("hook")
+	IntegrationTypeOutgoingHook = IntegrationType("outgoing_hook")
+	IntegrationTypeStorage      = IntegrationType("storage")
+	IntegrationTypeDeployment   = IntegrationType("deployment")
 )
 
 // DefaultIfEmptyStorage return sdk.DefaultStorageIntegrationName if integrationName is empty
@@ -216,6 +219,7 @@ type IntegrationModel struct {
 	PublicConfigurations    map[string]IntegrationConfig `json:"public_configurations,omitempty" db:"-" yaml:"public_configurations"`
 	Disabled                bool                         `json:"disabled" db:"disabled" yaml:"disabled"`
 	Hook                    bool                         `json:"hook" db:"hook" yaml:"hook" cli:"hooks_supported"`
+	OutgoingHook            bool                         `json:"outgoing_hook" db:"outgoing_hook" yaml:"outgoing_hook" cli:"outgoing_hooks_supported"`
 	Storage                 bool                         `json:"storage" db:"storage" yaml:"storage" cli:"storage supported"`
 	Deployment              bool                         `json:"deployment" db:"deployment" yaml:"deployment" cli:"deployment_supported"`
 	Compute                 bool                         `json:"compute" db:"compute" yaml:"compute" cli:"compute_supported"`

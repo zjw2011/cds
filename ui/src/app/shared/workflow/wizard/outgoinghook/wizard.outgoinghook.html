@@ -39,6 +39,17 @@
                                 [config]="codeMirrorConfig" (change)="changeCodeMirror($event)" #textareaCodeMirror>
                             </codemirror>
                         </ng-container>
+                        <ng-container *ngIf="hook.outgoing_hook.config[k].type === 'integration'">
+                            <sui-select class="selection" placeholder="{{'integration_name' | translate}}"
+                                        [(ngModel)]="selectedIntegration"
+                                        (ngModelChange)="updateIntegration()"
+                                        [options]="availableIntegrations"
+                                        [isSearchable]="true"
+                                        labelField="name" #select>
+                                <sui-select-option *ngFor="let option of select.filteredOptions" [value]="option">{{option.name}}
+                                </sui-select-option>
+                            </sui-select>
+                        </ng-container>
                     </div>
                 </div>
             </ng-container>

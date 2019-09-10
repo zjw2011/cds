@@ -9,6 +9,9 @@
                 <li *ngIf="option.hook">
                     <div class="ui green label">{{'integration_hook' | translate}}</div>
                 </li>
+                <li *ngIf="option.outgoing_hook">
+                    <div class="ui green label">{{'integration_outgoing_hook' | translate}}</div>
+                </li>
                 <li *ngIf="option.event">
                     <div class="ui green label">{{'integration_event' | translate}}</div>
                 </li>

@@ -881,10 +881,11 @@ func RenameNode(db gorp.SqlExecutor, w *sdk.Workflow) error {
 		case sdk.NodeTypeOutGoingHook:
 			hookModelID := nodesToNamed[i].OutGoingHookContext.HookModelID
 			nextNumber := maxNumberByHookModel[hookModelID] + 1
+			outgoingName := strings.ReplaceAll(w.OutGoingHookModels[hookModelID].Name, " ", "_")
 			if nextNumber > 1 {
-				nodesToNamed[i].Name = fmt.Sprintf("%s_%d", w.OutGoingHookModels[hookModelID].Name, nextNumber)
+				nodesToNamed[i].Name = fmt.Sprintf("%s_%d", outgoingName, nextNumber)
 			} else {
-				nodesToNamed[i].Name = w.OutGoingHookModels[hookModelID].Name
+				nodesToNamed[i].Name = outgoingName
 			}
 			maxNumberByHookModel[hookModelID] = nextNumber
 		}

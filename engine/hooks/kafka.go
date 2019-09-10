@@ -58,7 +58,6 @@ func (s *Service) startKafkaHook(t *sdk.Task) error {
 		case "username":
 			kafkaUser = v.Value
 		}
-
 	}
 
 	var config = sarama.NewConfig()

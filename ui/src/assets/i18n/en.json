@@ -532,6 +532,7 @@
   "integration_configuration": "Configuration",
   "integration_official_tooltip": "Public integration",
   "integration_hook": "hook",
+  "integration_outgoing_hook": "outgoing hook",
   "integration_event": "event",
   "integration_deployment": "deployment",
   "integration_storage": "storage",

@@ -41,6 +41,8 @@ func LoadPublicModelsByType(db gorp.SqlExecutor, integrationType *sdk.Integratio
 			query += " AND integration_model.storage = true"
 		case sdk.IntegrationTypeHook:
 			query += " AND integration_model.hook = true"
+		case sdk.IntegrationTypeOutgoingHook:
+			query += " AND integration_model.outgoin_hook = true"
 		case sdk.IntegrationTypeDeployment:
 			query += " AND integration_model.deployment = true"
 		}

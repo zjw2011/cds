@@ -69,6 +69,18 @@ func (s *Service) nodeRunToTask(nr sdk.WorkflowNodeRun) (sdk.Task, error) {
 			Type:   TypeOutgoingWorkflow,
 			Config: config,
 		}, nil
+	case sdk.KafkaHookModelName:
+		return sdk.Task{
+			UUID:   uuid,
+			Type:   TypeOutgoingKafka,
+			Config: config,
+		}, nil
+	case sdk.RabbitMQHookModelName:
+		return sdk.Task{
+			UUID:   uuid,
+			Type:   TypeOutgoingRabbitMQ,
+			Config: config,
+		}, nil
 	}
 
 	return sdk.Task{}, fmt.Errorf("Unsupported hook: %s", nr.OutgoingHook.Config[sdk.HookConfigModelName].Value)
@@ -103,6 +115,50 @@ func (s *Service) startOutgoingWebHookTask(t *sdk.Task) (*sdk.TaskExecution, err
 
 	s.Dao.SaveTaskExecution(exec) //We don't push in queue, we will the scheduler to run it
 	log.Debug("Hooks> Outgoing hook task  %s ready", t.UUID)
+
+	return exec, nil
+}
+
+func (s *Service) startOutgoingKafkaTask(t *sdk.Task) (*sdk.TaskExecution, error) {
+	now := time.Now()
+	payload := t.Config["payload"].Value
+
+	//Craft a new execution
+	exec := &sdk.TaskExecution{
+		Timestamp: now.UnixNano(),
+		Status:    TaskExecutionScheduled,
+		Type:      t.Type,
+		UUID:      t.UUID,
+		Config:    t.Config,
+		Kafka: &sdk.KafkaTaskExecution{
+			Message: []byte(payload),
+		},
+	}
+
+	s.Dao.SaveTaskExecution(exec) //We don't push in queue, we will the scheduler to run it
+	log.Debug("Hooks> Outgoing kafka hook task  %s ready", t.UUID)
+
+	return exec, nil
+}
+
+func (s *Service) startOutgoingRabbitMQTask(t *sdk.Task) (*sdk.TaskExecution, error) {
+	now := time.Now()
+	payload := t.Config["payload"].Value
+
+	//Craft a new execution
+	exec := &sdk.TaskExecution{
+		Timestamp: now.UnixNano(),
+		Status:    TaskExecutionScheduled,
+		Type:      t.Type,
+		UUID:      t.UUID,
+		Config:    t.Config,
+		RabbitMQ: &sdk.RabbitMQTaskExecution{
+			Message: []byte(payload),
+		},
+	}
+
+	s.Dao.SaveTaskExecution(exec) //We don't push in queue, we will the scheduler to run it
+	log.Debug("Hooks> Outgoing rabbitMQ hook task  %s ready", t.UUID)
 
 	return exec, nil
 }
@@ -368,6 +424,18 @@ func (s *Service) doOutgoingWebHookExecution(t *sdk.TaskExecution) error {
 	if code, err := s.Client.(cdsclient.Raw).PostJSON(context.Background(), callbackURL, callbackData, nil); err != nil {
 		log.Error("[%d] unable to perform outgoing hook callback: %v", code, err)
 	}
+
+	return nil
+}
+
+func (s *Service) doOutgoingKafkaTaskExecution(t *sdk.TaskExecution) error {
+	// TODO yesnault
+
+	return nil
+}
+
+func (s *Service) doOutgoingRabbitMQTaskExecution(t *sdk.TaskExecution) error {
+	// TODO yesnault
 
 	return nil
 }
