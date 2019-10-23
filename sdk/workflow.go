@@ -25,6 +25,7 @@ type Workflow struct {
 	Name                    string                       `json:"name" db:"name" cli:"name,key"`
 	Description             string                       `json:"description,omitempty" db:"description" cli:"description"`
 	Icon                    string                       `json:"icon,omitempty" db:"icon" cli:"-"`
+	IconURL                 string                       `json:"icon_url,omitempty" db:"icon_url" cli:"-"`
 	LastModified            time.Time                    `json:"last_modified" db:"last_modified" mapstructure:"-"`
 	ProjectID               int64                        `json:"project_id,omitempty" db:"project_id" cli:"-"`
 	ProjectKey              string                       `json:"project_key" db:"-" cli:"-"`
