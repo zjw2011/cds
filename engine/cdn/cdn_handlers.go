@@ -63,6 +63,17 @@ func (s *Service) getDownloadHandler() service.Handler {
 			if err != nil {
 				return sdk.WrapError(err, "cannot download artifact")
 			}
+		case sdk.CDNIconType:
+			if cdnRequest.Icon == nil {
+				return fmt.Errorf("cannot download icon, need icon description in cdn request token")
+			}
+			w.Header().Add("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", cdnRequest.Artifact.Name))
+
+			var err error
+			file, err = s.downloadArtifact(ctx, r, *cdnRequest)
+			if err != nil {
+				return sdk.WrapError(err, "cannot download artifact")
+			}
 		default:
 			return fmt.Errorf("cannot download, unknown type %s", cdnRequest.Type)
 		}
@@ -101,6 +112,15 @@ func (s *Service) postUploadHandler() service.Handler {
 				return sdk.WrapError(err, "cannot store artifact")
 			}
 			return service.WriteJSON(w, *artifact, http.StatusOK)
+		case sdk.CDNIconType:
+			if cdnRequest.Icon == nil {
+				return fmt.Errorf("cannot upload icon, need icon description in cdn request token")
+			}
+			icon, err := s.storeIcon(ctx, r.Body, *cdnRequest)
+			if err != nil {
+				return sdk.WrapError(err, "cannot store icon")
+			}
+			return service.WriteJSON(w, *icon, http.StatusOK)
 		default:
 			return fmt.Errorf("cannot download, unknown type %s", cdnRequest.Type)
 		}

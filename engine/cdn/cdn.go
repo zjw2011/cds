@@ -134,7 +134,6 @@ func (s *Service) initDefaultDrivers(ctx context.Context) error {
 		case config.Openstack != nil:
 			driverCfg.Kind = objectstore.Openstack
 			driverCfg.Options.Openstack = *config.Openstack
-
 		}
 
 		if name == defaultBackendName {

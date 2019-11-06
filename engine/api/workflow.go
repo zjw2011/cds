@@ -4,17 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/go-gorp/gorp"
 	"github.com/gorilla/mux"
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/ovh/cds/engine/api/application"
+	"github.com/ovh/cds/engine/api/authentication"
 	"github.com/ovh/cds/engine/api/environment"
 	"github.com/ovh/cds/engine/api/event"
 	"github.com/ovh/cds/engine/api/integration"
@@ -494,20 +493,6 @@ func (api *API) putWorkflowIconHandler() service.Handler {
 			return errP
 		}
 
-		imageBts, errr := ioutil.ReadAll(r.Body)
-		if errr != nil {
-			return sdk.NewError(sdk.ErrWrongRequest, errr)
-		}
-		defer r.Body.Close()
-
-		icon := string(imageBts)
-		if !strings.HasPrefix(icon, sdk.IconFormat) {
-			return sdk.ErrIconBadFormat
-		}
-		if len(icon) > sdk.MaxIconSize {
-			return sdk.ErrIconBadSize
-		}
-
 		wf, err := workflow.Load(ctx, api.mustDB(), api.Cache, p, name, workflow.LoadOptions{
 			Minimal: true,
 		})
@@ -515,11 +500,29 @@ func (api *API) putWorkflowIconHandler() service.Handler {
 			return err
 		}
 
-		if err := workflow.UpdateIcon(api.mustDB(), wf.ID, icon); err != nil {
-			return err
+		srvs, err := services.LoadAllByType(ctx, api.mustDB(), services.TypeCDN)
+		if err != nil {
+			return sdk.WrapError(err, "cannot load services of type CDN")
+		}
+		cdnService := srvs[0]
+		cdnReq := sdk.CDNRequest{
+			Type:       sdk.CDNIconType,
+			ProjectKey: key,
+			Icon: &sdk.Icon{
+				Filename:   fmt.Sprintf("icon_%s_%s", key, wf.Name),
+				ProjectKey: key,
+				WorkflowID: wf.ID,
+			},
 		}
 
-		return service.WriteJSON(w, nil, http.StatusOK)
+		cdnReqToken, err := authentication.SignJWS(cdnReq, 0)
+		if err != nil {
+			return sdk.WrapError(err, "cannot sign jws for cdn request")
+		}
+
+		http.Redirect(w, r, fmt.Sprintf("%s/upload/%s", cdnService.HTTPURL, cdnReqToken), http.StatusPermanentRedirect)
+
+		return nil
 	}
 }
 

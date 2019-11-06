@@ -47,7 +47,7 @@ func (s *Service) storeArtifact(ctx context.Context, body io.ReadCloser, cdnRequ
 	for i := 0; i < retry; i++ {
 		uri := fmt.Sprintf("/project/%s/storage/%s/artifact/%s/url/callback", cdnRequest.ProjectKey, cdnRequest.IntegrationName, art.Ref)
 		ctxt, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_, callbackErr = s.Client.PostJSON(ctxt, uri, &art, nil)
+		_, callbackErr = s.Client.PostJSON(ctxt, uri, art, nil)
 		if callbackErr == nil {
 			cancel()
 			return nil, nil
@@ -55,7 +55,7 @@ func (s *Service) storeArtifact(ctx context.Context, body io.ReadCloser, cdnRequ
 		cancel()
 	}
 
-	return art, nil
+	return art, sdk.WrapError(callbackErr, "cannot send callback to api")
 }
 
 func (s *Service) downloadArtifact(ctx context.Context, req *http.Request, cdnRequest sdk.CDNRequest) (io.ReadCloser, error) {
