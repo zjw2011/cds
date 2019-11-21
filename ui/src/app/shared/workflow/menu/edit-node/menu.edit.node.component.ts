@@ -1,11 +1,11 @@
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
-    Component,
+    Component, ElementRef,
     EventEmitter,
     Input,
     OnInit,
-    Output
+    Output, ViewChild
 } from '@angular/core';
 import { Store } from '@ngxs/store';
 import { IPopup } from '@richardlt/ng2-semantic-ui';
@@ -26,10 +26,12 @@ import { Subscription } from 'rxjs';
 @AutoUnsubscribe()
 export class WorkflowWNodeMenuEditComponent implements OnInit {
 
-    // Project that contains the workflow
-    @Input() project: Project;
+    @ViewChild('container', {static: false}) container: ElementRef;
 
-    @Input() node: WNode;
+    // Project that contains the workflow
+    project: Project;
+    node: WNode;
+
     _noderun: WorkflowNodeRun;
     @Input('noderun') set noderun(data: WorkflowNodeRun) {
         this._noderun = data;
@@ -44,21 +46,35 @@ export class WorkflowWNodeMenuEditComponent implements OnInit {
     }
     get workflowrun() { return this._workflowrun }
 
-    @Input() popup: IPopup;
-    @Input() readonly = true;
+    readonly = true;
     @Output() event = new EventEmitter<string>();
     runnable: boolean;
     storeSubscription: Subscription;
     workflow: Workflow;
+    display = false;
 
     constructor(
         private _store: Store,
         private _cd: ChangeDetectorRef
     ) { }
 
+    show(p: Project, n: WNode, readonly: boolean, x, y: number) {
+        this.project = p;
+        this.node = n;
+        this.readonly = readonly;
+        this.display = true;
+        console.log(x, y, this.container);
+        this.container.nativeElement.style.top = y;
+        this.container.nativeElement.style.left = x;
+        this.container.nativeElement.style.setProperty('top', y.toString()+ 'px');
+        this.container.nativeElement.style.setProperty('left', x.toString()+ 'px');
+        this._cd.detectChanges();
+    }
+
     ngOnInit(): void {
         this.storeSubscription = this._store.select(WorkflowState.getCurrent())
             .subscribe((s: WorkflowStateModel) => {
+            console.log(s.workflow);
             this.workflow = s.workflow;
             this.runnable = this.getCanBeRun();
             this._cd.markForCheck();
@@ -66,7 +82,6 @@ export class WorkflowWNodeMenuEditComponent implements OnInit {
     }
 
     sendEvent(e: string): void {
-        this.popup.close();
         this.event.emit(e);
     }
 

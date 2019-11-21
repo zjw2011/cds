@@ -54,6 +54,13 @@ a,
   background-color: $darkTheme_grey_1;
 }
 
+.menu-node {
+  background-color: white;
+}
+.night .menu-node {
+  background-color: $darkTheme_grey_1;
+}
+
 .ui.card {
   .meta {
     .night & {

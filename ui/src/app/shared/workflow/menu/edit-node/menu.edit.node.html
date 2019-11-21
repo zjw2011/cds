@@ -1,5 +1,5 @@
-<div class="menu-node">
-    <div class="ui list" *ngIf="workflow">
+<div class="menu-node" [class.active]="display" #container>
+    <div class="ui list" *ngIf="workflow && display">
         <ng-container *ngIf="workflowrun">
             <a class="item" (click)="sendEvent('run')" [class.disabled]="!runnable">
                 {{'btn_run' | translate }}

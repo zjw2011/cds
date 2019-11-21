@@ -1,14 +1,19 @@
 // tslint:disable-next-line: max-line-length
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ComponentFactoryResolver, ComponentRef, EventEmitter, HostListener, Input, Output, ViewChild, ViewContainerRef } from '@angular/core';
+import { CytoscapeHtmlContainer } from 'app/model/cytoscape.model';
+import { Project } from 'app/model/project.model';
+import { WNode, Workflow } from 'app/model/workflow.model';
+import { WorkflowCoreService } from 'app/service/workflow/workflow.core.service';
+import { WorkflowStore } from 'app/service/workflow/workflow.store';
+import { AutoUnsubscribe } from 'app/shared/decorator/autoUnsubscribe';
+import { WorkflowWNodeMenuEditComponent } from 'app/shared/workflow/menu/edit-node/menu.edit.node.component';
+import { WorkflowNodeHookComponent } from 'app/shared/workflow/wnode/hook/hook.component';
+import { WorkflowWNodeComponent } from 'app/shared/workflow/wnode/wnode.component';
+import * as cytoscape from 'cytoscape';
+import { ElementsDefinition, Stylesheet } from 'cytoscape';
+import * as cytodagre from 'cytoscape-dagre';
 import * as d3 from 'd3';
 import * as dagreD3 from 'dagre-d3';
-import { Project } from '../../../model/project.model';
-import { WNode, Workflow } from '../../../model/workflow.model';
-import { WorkflowCoreService } from '../../../service/workflow/workflow.core.service';
-import { WorkflowStore } from '../../../service/workflow/workflow.store';
-import { AutoUnsubscribe } from '../../../shared/decorator/autoUnsubscribe';
-import { WorkflowNodeHookComponent } from '../../../shared/workflow/wnode/hook/hook.component';
-import { WorkflowWNodeComponent } from '../../../shared/workflow/wnode/wnode.component';
 
 @Component({
     selector: 'app-workflow-graph',
@@ -23,9 +28,12 @@ import { WorkflowWNodeComponent } from '../../../shared/workflow/wnode/wnode.com
 @AutoUnsubscribe()
 export class WorkflowGraphComponent implements AfterViewInit {
     static margin = 80; // let 40px on top and bottom of the graph
-    static maxScale = 2;
-    static minScale = 1 / 4;
+    static maxScale = 1.6;
+    static minScale = 0.45;
     static maxOriginScale = 1;
+
+    cy: cytoscape.Core;
+    htmlContainer: CytoscapeHtmlContainer;
 
     workflow: Workflow;
     @Input('workflowData')
@@ -33,8 +41,8 @@ export class WorkflowGraphComponent implements AfterViewInit {
         this.workflow = data;
         this.nodesComponent = new Map<string, ComponentRef<WorkflowWNodeComponent>>();
         this.hooksComponent = new Map<string, ComponentRef<WorkflowNodeHookComponent>>();
-        this.changeDisplay();
     }
+    selectedNode: WNode;
 
     @Input() project: Project;
 
@@ -42,7 +50,6 @@ export class WorkflowGraphComponent implements AfterViewInit {
     set direction(data: string) {
         this._direction = data;
         this._workflowStore.setDirection(this.project.key, this.workflow.name, this.direction);
-        this.changeDisplay();
     }
     get direction() { return this._direction; }
 
@@ -52,6 +59,8 @@ export class WorkflowGraphComponent implements AfterViewInit {
     _direction: string;
 
     // workflow graph
+    @ViewChild('nodeMenu', {static: false}) nodeMenu: WorkflowWNodeMenuEditComponent;
+    @ViewChild('container', {read: ViewContainerRef, static: true}) container: ViewContainerRef;
     @ViewChild('svgGraph', { read: ViewContainerRef, static: false }) svgContainer: any;
     g: dagreD3.graphlib.Graph;
     render = new dagreD3.render();
@@ -69,7 +78,9 @@ export class WorkflowGraphComponent implements AfterViewInit {
         private _cd: ChangeDetectorRef,
         private _workflowStore: WorkflowStore,
         private _workflowCore: WorkflowCoreService,
-    ) { }
+    ) {
+        cytoscape.use(cytodagre);
+    }
 
     ngAfterViewInit(): void {
         this.ready = true;
@@ -81,47 +92,170 @@ export class WorkflowGraphComponent implements AfterViewInit {
         if (!this.ready && this.workflow) {
             return;
         }
-        // FIXME add a delay for dom container to take good height, otherwise the workflow will not be centered
-        setTimeout(() => { this.initWorkflow(); }, 1);
+        this.initGraph();
     }
 
-    initWorkflow() {
-        // https://github.com/cpettitt/dagre/wiki#configuring-the-layout
-        this.g = new dagreD3.graphlib.Graph().setGraph({ rankdir: this.direction, nodesep: 10, ranksep: 15, edgesep: 5 });
-        // Create all nodes
-        if (this.workflow.workflow_data && this.workflow.workflow_data.node) {
-            this.createNode(this.workflow.workflow_data.node);
+    initGraph() {
+        if (!this.ready || !this.workflow) {
+            return;
         }
-        if (this.workflow.workflow_data && this.workflow.workflow_data.joins) {
-            this.workflow.workflow_data.joins.forEach(j => {
-                this.createNode(j);
+        let dagreOpts = {
+            name: 'dagre',
+            // dagre algo options, uses default value on undefined
+            nodeSep: 10, // the separation between adjacent nodes in the same rank
+            edgeSep: 5, // the separation between adjacent edges in the same rank
+            rankSep: 15, // the separation between each rank in the layout
+            rankDir: 'LR', // 'TB' for top to bottom flow, 'LR' for left to right,
+            ranker: undefined, // Type of algorithm to assign a rank to each node in the input graph. Possible values: 'network-simplex', 'tight-tree' or 'longest-path'
+            minLen: function( edge ) { return 1; }, // number of ranks to keep between the source and target of the edge
+            edgeWeight: function( edge ) { return 1; }, // higher weight edges are generally made shorter and straighter than lower weight edges
+
+            // general layout options
+            fit: true, // whether to fit to viewport
+            padding: 30, // fit padding
+            spacingFactor: undefined, // Applies a multiplicative factor (>0) to expand or compress the overall area that the nodes take up
+            nodeDimensionsIncludeLabels: false, // whether labels should be included in determining the space used by a node
+            animate: false, // whether to transition the node positions
+            animateFilter: function( node, i ) { return true; }, // whether to animate specific nodes when animation is on; non-animated nodes immediately go to their final positions
+            animationDuration: 500, // duration of animation in ms if enabled
+            animationEasing: undefined, // easing of animation if enabled
+            boundingBox: undefined, // constrain layout bounds; { x1, y1, x2, y2 } or { x1, y1, w, h }
+            transform: function( node, pos ) { return pos; }, // a function that applies a transform to the final node position
+            ready: function() {}, // on layoutready
+            stop: function() {} // on layoutstop
+        };
+
+
+
+        let style = <Stylesheet[]>[ // the stylesheet for the graph
+            {
+                selector: 'node',
+                style: {
+                    'background-opacity': '0',
+                    'border-width': 1,
+                    'border-color': 'grey',
+                    'width': '180px',
+                    'height': '60px',
+                    'shape': 'rectangle',
+
+                    'label': 'data(label)',
+                    'label-width': '180px',
+                    'text-valign': 'center',
+                    'text-halign': 'center',
+                    'text-justification': 'left',
+                    'line-height': '1.2px',
+                    'text-wrap': 'wrap',
+                    'cursor': 'pointer'
+                }
+            },
+
+            {
+                selector: 'edge',
+                style: {
+                    'width': 3,
+                    'line-color': '#ccc',
+                    'target-arrow-color': '#ccc',
+                    'target-arrow-shape': 'triangle'
+                }
+            }
+        ];
+
+        let elements = <ElementsDefinition>{
+            nodes: [],
+            edges: []
+        };
+        let nodes = Workflow.getAllNodes(this.workflow);
+        nodes.forEach( n => {
+            elements.nodes.push({
+                data: { id: n.id.toString(), node: n, template: '<b>Coucou</b>', label: 'pipeline\napplication\nenvironment'}
             });
-        }
 
-        // Run the renderer. This is what draws the final graph.
-        this.svg = d3.select('svg');
-        let oldG = this.svg.select('g');
-        if (oldG) {
-            oldG.remove();
-        }
-        let g = this.svg.append('g');
-
-        this.render(g, this.g);
-
-        this.zoom = d3.zoom().scaleExtent([
-            WorkflowGraphComponent.minScale,
-            WorkflowGraphComponent.maxScale
-        ]).on('zoom', () => {
-            if (d3.event.transform && d3.event.transform.x && d3.event.transform.x !== Number.POSITIVE_INFINITY
-                && d3.event.transform.y && d3.event.transform.y !== Number.POSITIVE_INFINITY) {
-                g.attr('transform', d3.event.transform);
+            if (n.triggers) {
+                n.triggers.forEach(t => {
+                    elements.edges.push({
+                        data: { id: t.id.toString(), source: n.id.toString(), target: t.child_node.id.toString() }
+                    });
+                });
+            }
+            if (n.parents) {
+                n.parents.forEach(p => {
+                    elements.edges.push({
+                        data: { id: p.id.toString(), source: p.parent_id.toString(), target: n.id.toString() }
+                    });
+                });
             }
         });
 
-        this.svg.call(this.zoom);
+        this.cy = cytoscape({
+            container: this.container.element.nativeElement,
+            minZoom: WorkflowGraphComponent.minScale,
+            maxZoom: WorkflowGraphComponent.maxScale,
+            style: style,
+            layout: dagreOpts, // options,//dagreOpts,
+            elements: elements
+        });
+        this.cy.on('pan zoom', (event: any) => {
+            // console.log(event);
+        });
+        this.cy.on('tap', () => {
+        });
+        this.cy.on('tap', 'node', (event) => {
+            console.log(event);
+            this.selectedNode = this.workflow.workflow_data.node;
+            this.nodeMenu.show(this.project, this.workflow.workflow_data.node, false, event.originalEvent.clientX, event.originalEvent.clientY);
+            // this.popup.popup.config.placement = '';
+                // this.popup.open();
+                // this.popup._componentRef.location.nativeElement.childNodes[0].style.left = '500px';
+                // var cssDeclaration = <CSSStyleDeclaration>this.popup._componentRef.location.nativeElement.childNodes[0].style;
+                // cssDeclaration.setProperty('left', '500px');
+                // cssDeclaration.setProperty('top', '300px');
+                // console.log(this.popup);
+                // console.log(event.target.position('y'));
+                // console.log(event.target.position('x'));
+                // console.log(this.popup);
+                // this.popup.popup.elementRef.nativeElement.style.position = 'absolute';
+                // this.popup.popup.elementRef.nativeElement.style.top = event.target.position('y');
+                // this.popup.popup.elementRef.nativeElement.style.left = event.target.position('x');
+                // console.log(this.popup._componentRef.location.nativeElement.childNodes[0].style);
+                // console.log(this.popup.template.elementRef.nativeElement);
+                // console.log(this.popup.template.elementRef);
 
-        this.clickOrigin();
-        this._cd.markForCheck();
+
+            /*
+            this.popup.open();
+            console.log(this.popup.template.elementRef.nativeElement.style);
+            console.log(this.popup.template.elementRef.nativeElement);
+            console.log(this.popup.template.elementRef);
+            this.popup.template.elementRef.nativeElement.style['position'] = 'absolute';
+            this.popup.template.elementRef.nativeElement.style.top = event.target.position('y');
+            this.popup.template.elementRef.nativeElement.style.left = event.target.position('x');
+            console.log(event.target.data('template'));
+            console.log(this.popup);
+            console.log(this.popup.template.elementRef.nativeElement);
+            */
+
+        });
+        /*
+        if (!this.htmlContainer) {
+            this.htmlContainer = new CytoscapeHtmlContainer(this.cy);
+            this.cy.one("render", (event: CytoscapeEvent) => {
+                this.htmlContainer.refreshData(event.cy);
+                this.htmlContainer.refreshView(event.cy);
+            });
+            this.cy.on("pan zoom", (event: CytoscapeEvent) => {
+                this.htmlContainer.refreshView(event.cy);
+            });
+            this.cy.on('tap', 'node', (event: CytoscapeEvent) => {
+                console.log(event.target.data('template'));
+            });
+        }
+
+         */
+
+    }
+
+    receivedEvent(e) {
+        console.log(e);
     }
 
     clickOrigin() {
@@ -140,102 +274,6 @@ export class WorkflowGraphComponent implements AfterViewInit {
         this.svg.call(this.zoom.transform, d3.zoomIdentity.translate(centerX, centerY).scale(scale));
     }
 
-    createEdge(from: string, to: string, options: {}): void {
-        this.g.setEdge(from, to, {
-            ...options,
-            arrowhead: 'undirected',
-            style: 'stroke: #B5B7BD;stroke-width: 2px;'
-        });
-    }
-
-    createHookNode(node: WNode): void {
-        if (!node.hooks || node.hooks.length === 0) {
-            return;
-        }
-
-        node.hooks.forEach(h => {
-            let hookId = h.uuid;
-            let componentRef = this.hooksComponent.get(hookId);
-            if (!componentRef) {
-                let hookComponent = this.componentFactoryResolver.resolveComponentFactory(WorkflowNodeHookComponent);
-                componentRef = hookComponent.create(this.svgContainer.parentInjector);
-            }
-            componentRef.instance.hook = h;
-            componentRef.instance.workflow = this.workflow;
-            componentRef.instance.project = this.project;
-            componentRef.instance.node = node;
-            this.hooksComponent.set(hookId, componentRef);
-
-            this.svgContainer.insert(componentRef.hostView, 0);
-            this.g.setNode(
-                'hook-' + node.ref + '-' + hookId, <any>{
-                    label: () => componentRef.location.nativeElement,
-                    labelStyle: 'width: 25px;height: 25px;'
-                }
-            );
-
-            this.createEdge(`hook-${node.ref}-${hookId}`, `node-${node.ref}`, {
-                id: `hook-${node.ref}-${hookId}`
-            });
-        });
-    }
-
-    createNode(node: WNode): void {
-        let componentRef = this.nodesComponent.get(node.ref);
-        if (!componentRef || componentRef.instance.node.id !== node.id) {
-            componentRef = this.createNodeComponent(node);
-            this.nodesComponent.set(node.ref, componentRef);
-        }
-
-        let width: number;
-        let height: number;
-        let shape = 'rect';
-        switch (node.type) {
-            case 'pipeline':
-            case 'outgoinghook':
-                width = 180;
-                height = 60;
-                break;
-            case 'join':
-                width = 40;
-                height = 40;
-                shape = 'circle';
-                break;
-            case 'fork':
-                width = 42;
-                height = 42;
-                break;
-        }
-
-        this.svgContainer.insert(componentRef.hostView, 0);
-        this.g.setNode('node-' + node.ref, <any>{
-            label: () => componentRef.location.nativeElement,
-            shape: shape,
-            labelStyle: `width: ${width}px;height: ${height}px;`
-        });
-
-        this.createHookNode(node);
-
-        if (node.triggers) {
-            node.triggers.forEach(t => {
-                this.createNode(t.child_node);
-                this.createEdge('node-' + node.ref, 'node-' + t.child_node.ref, {
-                    id: 'trigger-' + t.id,
-                    style: 'stroke: #000000;'
-                });
-            });
-        }
-
-        // Create parent trigger
-        if (node.type === 'join') {
-            node.parents.forEach(p => {
-                this.createEdge('node-' + p.parent_name, 'node-' + node.ref, {
-                    id: 'join-trigger-' + p.parent_name,
-                    style: 'stroke: #000000;'
-                });
-            });
-        }
-    }
 
     @HostListener('document:keydown', ['$event'])
     handleKeyboardEvent(event: KeyboardEvent) {
@@ -244,12 +282,4 @@ export class WorkflowGraphComponent implements AfterViewInit {
         }
     }
 
-    createNodeComponent(node: WNode): ComponentRef<WorkflowWNodeComponent> {
-        let nodeComponentFactory = this.componentFactoryResolver.resolveComponentFactory(WorkflowWNodeComponent);
-        let componentRef = nodeComponentFactory.create(this.svgContainer.parentInjector);
-        componentRef.instance.node = node;
-        componentRef.instance.workflow = this.workflow;
-        componentRef.instance.project = this.project;
-        return componentRef;
-    }
 }

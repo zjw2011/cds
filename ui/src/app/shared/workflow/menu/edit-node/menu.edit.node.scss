@@ -4,3 +4,14 @@
 .item.disabled {
     text-decoration: none;
 }
+
+.menu-node {
+    position: absolute;
+    padding: .833em 1em;
+    z-index: 1900;
+}
+.menu-node.active {
+    border: 1px solid #d4d4d5;
+    border-radius: .28571429rem;
+}
+
