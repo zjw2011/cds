@@ -1,0 +1,60 @@
+name: signup admin master
+
+vars:
+  api.url: 'http://localhost:8081'
+  cdsctl : 'cdsctl'
+  cdsctl.config : './cdsrc'
+  smtpmock.url: 'http://localhost:2024'
+  username: cds.integration.tests.rw
+  email: it-user-rw@localhost.local
+  fullname: cds.integration.tests.rw
+
+testcases:
+- name: signup
+  steps:
+  - type: http
+    method: POST
+    url: '{{.api.url}}/user/signup'
+    headers:
+      "Content-Type": "application/json"
+    body: |-
+      {"user" : {"username": "{{.username}}", "fullname": "{{.fullname}}", "email":"{{.email}}"}, "callback" : "cdsctl user confirm %s %s"}
+
+- name: read-verify-email
+  steps:
+  - type: http
+    method: GET
+    url: '{{.smtpmock.url}}/messages/{{.email}}/latest'
+    assertions:
+    - result.statuscode ShouldEqual 200
+    retry: 10
+    delay: 3
+    vars:
+      token:
+        from: result.bodyjson.content
+        regex: cdsctl user confirm (?:(?:\w+)\.*)+ ([a-zA-Z0-9]*)
+
+- name: confirm-signup
+  steps:
+  - script: "rm -f {{.cdsctl.config}}"
+  - script: "{{.cdsctl}} -f {{.cdsctl.config}} user confirm --api-url {{.api.url}} {{.username}} {{.read-verify-email.token}}"
+  - script: "{{.cdsctl}} -f {{.cdsctl.config}} user me"
+  - script: "{{.cdsctl}} -f {{.cdsctl.config}} user reset {{.username}} {{.email}}"
+
+- name: read-reset-email
+  steps:
+  - type: http
+    method: GET
+    url: '{{.smtpmock.url}}/messages/{{.email}}/latest'
+    assertions:
+    - result.statuscode ShouldEqual 200
+    retry: 10
+    delay: 3
+    vars:
+      token:
+        from: result.bodyjson.content
+        regex: cdsctl user confirm (?:(?:\w+)\.*)+ ([a-zA-Z0-9]*)
+
+- name: export-reset-token
+  steps:
+  - script: echo "{{.read-reset-email.token}}" > token.out

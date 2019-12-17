@@ -1,0 +1,37 @@
+name: reset admin account
+
+vars:
+  api.url: 'http://localhost:8081'
+  cdsctl : 'cdsctl'
+  cdsctl.config : './cdsrc'
+  smtpmock.url: 'http://localhost:2024'
+  email: it-user-rw@localhost.local
+  password: "1A2Z3E4R5T6Y"
+
+testcases:
+- name: reset-password
+  steps:
+  - script: "{{.cdsctl}} reset-password --api-url {{.api.url}} --email {{.email}} --no-interactive"
+
+- name: read-reset-email
+  steps:
+  - type: http
+    method: GET
+    url: '{{.smtpmock.url}}/messages/{{.email}}/latest'
+    assertions:
+    - result.statuscode ShouldEqual 200
+    retry: 10
+    delay: 3
+    vars:
+      token:
+        from: result.bodyjson.content
+        regex: cdsctl reset-password confirm --api-url (?:.*) (.*)
+
+- name: confirm-reset
+  steps:
+  - script: "rm -f {{.cdsctl.config}}"
+  - script: "{{.cdsctl}} -f {{.cdsctl.config}} -c test reset-password confirm {{.read-reset-email.token}} --api-url {{.api.url}} --password {{.password}} --no-interactive"
+  - script: "{{.cdsctl}} -f {{.cdsctl.config}} -c test user me --fields ring --format json"
+    assertions:
+    - result.systemoutjson.ring ShouldEqual ADMIN
+

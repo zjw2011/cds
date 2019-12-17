@@ -34,9 +34,9 @@ CONTRIB_DIST = $(wildcard contrib/dist/*)
 UI_DIST = ui/ui.tar.gz
 
 TARGET_DIR := dist/
-ALL_DIST = $(ENGINE_DIST) 
-ALL_DIST := $(ALL_DIST) $(WORKER_DIST) 
-ALL_DIST := $(ALL_DIST) $(CLI_DIST) 
+ALL_DIST = $(ENGINE_DIST)
+ALL_DIST := $(ALL_DIST) $(WORKER_DIST)
+ALL_DIST := $(ALL_DIST) $(CLI_DIST)
 ALL_DIST := $(ALL_DIST) $(UI_DIST)
 ALL_DIST := $(ALL_DIST) $(CONTRIB_DIST)
 ALL_TARGETS := $(foreach DIST,$(ALL_DIST),$(addprefix $(TARGET_DIR),$(notdir $(DIST))))
@@ -65,8 +65,8 @@ $(ALL_TARGETS):
 
 dist: $(ALL_TARGETS)
 
-clean: 
-	@rm -rf target
+clean:
+	@rm -rf target dist
 	$(MAKE) clean -C engine
 	$(MAKE) clean -C engine/worker
 	$(MAKE) clean -C cli/cdsctl
@@ -74,7 +74,7 @@ clean:
 	$(MAKE) clean -C contrib
 
 deb: $(ALL_TARGETS) target/cds-engine.deb
-	
+
 $(TARGET_DIR)/config.toml.sample:
 	$(TARGET_DIR)/cds-engine-linux-amd64 config new > $(TARGET_DIR)/config.toml.sample
 

@@ -1,0 +1,33 @@
+name: signup tests
+
+vars:
+  api.url: 'http://localhost:8081'
+  cdsctl : 'cdsctl'
+  cdsctl.config : './cdsrc'
+  engine: 'engine'
+  engine.config: cds-engine.toml'
+
+testcases:
+- name: create-service-consumers
+  steps:
+  - script: "{{.cdsctl}} -f {{.cdsctl.config}} -c test consumer new --groups shared.infra --scopes Service --name ui --no-interactive"
+    vars:
+      ui-token:
+        from: result.systemout
+        regex: "Builtin consumer successfully created, use the following token to sign in:\n(.*)"
+  - script: "{{.cdsctl}} -f {{.cdsctl.config}} -c test consumer new --groups shared.infra --scopes Service,Hatchery,RunExecution,WorkerModel --name hatchery:swarm --no-interactive"
+    vars:
+      hatchery-swarm-token:
+        from: result.systemout
+        regex: "Builtin consumer successfully created, use the following token to sign in:\n(.*)"
+  - script: "{{.cdsctl}} -f {{.cdsctl.config}} -c test consumer new --groups shared.infra --scopes Service,Hooks,Project,Run --name hooks --no-interactive"
+    vars:
+      hooks-token:
+        from: result.systemout
+        regex: "Builtin consumer successfully created, use the following token to sign in:\n(.*)"
+
+- name: set-token-to-config
+  steps:
+  - script: "{{.engine}} config edit --output {{.engine.config}} {{.engine.config}} ui.api.token={{.create-service-consumers.ui-token}}"
+  - script: "{{.engine}} config edit --output {{.engine.config}} {{.engine.config}} hatchery.swarm.commonConfiguration.api.token={{.create-service-consumers.hatchery-swarm-token}}"
+  - script: "{{.engine}} config edit --output {{.engine.config}} {{.engine.config}} hooks.api.token={{.create-service-consumers.hooks-token}}"

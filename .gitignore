@@ -32,6 +32,7 @@ test_results.xml
 .tmp
 contrib/**/dist
 config.*.toml
+.vagrant
 
 # TEST
 tests/fixtures/ITSCWRKFLW1/output
