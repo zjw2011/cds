@@ -7,31 +7,11 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/ovh/cds/engine/api/cache"
 	"github.com/ovh/cds/engine/api/project"
 	"github.com/ovh/cds/engine/api/workflow"
 	"github.com/ovh/cds/engine/service"
 	"github.com/ovh/cds/sdk"
-	"github.com/ovh/cds/sdk/log"
 )
-
-func (api *API) getWorkflowAsCodeHandler() service.Handler {
-	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-		vars := mux.Vars(r)
-		uuid := vars["uuid"]
-
-		var ope sdk.Operation
-		k := cache.Key(workflow.CacheOperationKey, uuid)
-		b, err := api.Cache.Get(k, &ope)
-		if err != nil {
-			log.Error(ctx, "cannot get from cache %s: %v", k, err)
-		}
-		if !b {
-			return sdk.ErrNotFound
-		}
-		return service.WriteJSON(w, ope, http.StatusOK)
-	}
-}
 
 func (api *API) postResyncPRWorkflowAsCodeHandler() service.Handler {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {

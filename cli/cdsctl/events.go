@@ -2,15 +2,14 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"github.com/ovh/cds/sdk/cdsclient"
 	"io/ioutil"
 
 	"github.com/spf13/cobra"
 
 	"github.com/ovh/cds/cli"
 	"github.com/ovh/cds/sdk"
-	"github.com/ovh/cds/sdk/cdsclient"
 )
 
 var eventsCmd = cli.Command{
@@ -31,24 +30,22 @@ var eventsListenCmd = cli.Command{
 
 func eventsListenRun(v cli.Values) error {
 	ctx := context.Background()
-	chanSSE := make(chan cdsclient.SSEvent)
+	chanMessageReceived := make(chan sdk.WebsocketEvent)
+	chanMessageToSend := make(chan sdk.WebsocketFilter)
 
 	sdk.GoRoutine(ctx, "EventsListenCmd", func(ctx context.Context) {
-		client.EventsListen(ctx, chanSSE)
+		client.EventsListen(ctx, chanMessageToSend, chanMessageReceived)
 	})
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case evt := <-chanSSE:
-			var e sdk.Event
-			content, _ := ioutil.ReadAll(evt.Data)
-			_ = json.Unmarshal(content, &e)
-			if e.EventType == "" {
+		case wsEvt := <-chanMessageReceived:
+			if wsEvt.Event.EventType == "" {
 				continue
 			}
-			fmt.Printf("%s: %s %s %s\n", e.EventType, e.ProjectKey, e.WorkflowName, e.Status)
+			fmt.Printf("%s: %s %s %s\n", wsEvt.Event.EventType, wsEvt.Event.ProjectKey, wsEvt.Event.WorkflowName, wsEvt.Event.Status)
 		}
 	}
 }

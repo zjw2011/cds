@@ -56,16 +56,21 @@ func shrinkQueue(queue *sdk.WorkflowQueue, nbJobsToKeep int) time.Time {
 func (c *client) QueuePolling(ctx context.Context, jobs chan<- sdk.WorkflowNodeJobRun, errs chan<- error, delay time.Duration, modelType string, ratioService *int) error {
 	jobsTicker := time.NewTicker(delay)
 
-	// This goroutine call the SSE route
-	chanSSEvt := make(chan SSEvent)
-	sdk.GoRoutine(ctx, "RequestSSEGet", func(ctx context.Context) {
+	// This goroutine call the websocket route
+	chanMessageReceived := make(chan sdk.WebsocketEvent, 10)
+	chanMessageToSend := make(chan sdk.WebsocketFilter, 10)
+
+	sdk.GoRoutine(ctx, "RequestWebsocket", func(ctx context.Context) {
 		for ctx.Err() == nil {
-			if err := c.RequestSSEGet(ctx, "/events", chanSSEvt); err != nil {
+			if err := c.RequestWebsocket(ctx, "/ws", chanMessageToSend, chanMessageReceived); err != nil {
 				log.Println("QueuePolling", err)
 			}
 			time.Sleep(1 * time.Second)
 		}
 	})
+	chanMessageToSend <- sdk.WebsocketFilter{
+		Queue: true,
+	}
 
 	for {
 		select {
@@ -75,20 +80,13 @@ func (c *client) QueuePolling(ctx context.Context, jobs chan<- sdk.WorkflowNodeJ
 				close(jobs)
 			}
 			return ctx.Err()
-		case evt := <-chanSSEvt:
+		case wsEvent := <-chanMessageReceived:
 			if jobs == nil {
 				continue
 			}
-
-			content, _ := ioutil.ReadAll(evt.Data)
-
-			var apiEvent sdk.Event
-			_ = json.Unmarshal(content, &apiEvent) // ignore errors
-			// filter only EventRunWorkflowJob
-			if apiEvent.EventType == "sdk.EventRunWorkflowJob" {
-				jobRunID, ok := apiEvent.Payload["ID"].(float64)
-				status, okStatus := apiEvent.Payload["Status"].(string)
-				if ok && okStatus && status == sdk.StatusWaiting {
+			if wsEvent.Event.EventType == "sdk.EventRunWorkflowJob" {
+				jobRunID, ok := wsEvent.Event.Payload["ID"].(float64)
+				if ok && wsEvent.Event.Status == sdk.StatusWaiting {
 					job, err := c.QueueJobInfo(ctx, int64(jobRunID))
 
 					// Do not log the error if the job does not exist
@@ -103,7 +101,7 @@ func (c *client) QueuePolling(ctx context.Context, jobs chan<- sdk.WorkflowNodeJ
 
 					// push the job in the channel
 					if job.Status == sdk.StatusWaiting && job.BookedBy.Name == "" {
-						job.Header["SSE"] = "true"
+						job.Header["WS"] = "true"
 						jobs <- *job
 					}
 

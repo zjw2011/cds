@@ -28,15 +28,16 @@ func (api *API) InitRouter() {
 	r := api.Router
 
 	log.Info(api.Router.Background, "Initializing Events broker")
-	// Initialize event broker
-	api.eventsBroker = &eventsBroker{
-		router:   api.Router,
-		cache:    api.Cache,
-		clients:  make(map[string]*eventsBrokerSubscribe),
-		dbFunc:   api.DBConnectionFactory.GetDBMap,
-		messages: make(chan sdk.Event),
+	api.websocketBroker = &websocketBroker{
+		router:           api.Router,
+		cache:            api.Cache,
+		dbFunc:           api.mustDB,
+		clients:          make(map[string]*websocketClient),
+		messages:         make(chan sdk.Event),
+		chanAddClient:    make(chan *websocketClient),
+		chanRemoveClient: make(chan string),
 	}
-	api.eventsBroker.Init(r.Background, api.PanicDump())
+	api.websocketBroker.Init(r.Background, api.PanicDump())
 
 	// Auth
 	r.Handle("/auth/driver", ScopeNone(), r.GET(api.getAuthDriversHandler, Auth(false)))
@@ -144,7 +145,6 @@ func (api *API) InitRouter() {
 
 	// Import As Code
 	r.Handle("/import/{permProjectKey}", Scope(sdk.AuthConsumerScopeProject), r.POST(api.postImportAsCodeHandler))
-	r.Handle("/import/{permProjectKey}/{uuid}", Scope(sdk.AuthConsumerScopeProject), r.GET(api.getImportAsCodeHandler))
 	r.Handle("/import/{permProjectKey}/{uuid}/perform", Scope(sdk.AuthConsumerScopeProject), r.POST(api.postPerformImportAsCodeHandler))
 
 	// Bookmarks
@@ -224,7 +224,6 @@ func (api *API) InitRouter() {
 	r.Handle("/project/{key}/workflows/{permWorkflowName}", Scope(sdk.AuthConsumerScopeProject), r.GET(api.getWorkflowHandler, AllowProvider(true), EnableTracing()), r.PUT(api.putWorkflowHandler, EnableTracing()), r.DELETE(api.deleteWorkflowHandler))
 	r.Handle("/project/{key}/workflows/{permWorkflowName}/eventsintegration/{integrationID}", Scope(sdk.AuthConsumerScopeProject), r.DELETE(api.deleteWorkflowEventsIntegrationHandler))
 	r.Handle("/project/{key}/workflows/{permWorkflowName}/icon", Scope(sdk.AuthConsumerScopeProject), r.PUT(api.putWorkflowIconHandler), r.DELETE(api.deleteWorkflowIconHandler))
-	r.Handle("/project/{key}/workflows/{permWorkflowName}/ascode/{uuid}", Scope(sdk.AuthConsumerScopeProject), r.GET(api.getWorkflowAsCodeHandler))
 	r.Handle("/project/{key}/workflows/{permWorkflowName}/ascode", Scope(sdk.AuthConsumerScopeProject), r.POST(api.postWorkflowAsCodeHandler, EnableTracing()))
 	r.Handle("/project/{key}/workflows/{permWorkflowName}/ascode/resync/pr", Scope(sdk.AuthConsumerScopeProject), r.POST(api.postResyncPRWorkflowAsCodeHandler, EnableTracing()))
 	r.Handle("/project/{key}/workflows/{permWorkflowName}/label", Scope(sdk.AuthConsumerScopeProject), r.POST(api.postWorkflowLabelHandler))
@@ -399,8 +398,8 @@ func (api *API) InitRouter() {
 	r.Handle("/workflow/hook", Scope(sdk.AuthConsumerScopeHooks), r.GET(api.getWorkflowHooksHandler))
 	r.Handle("/workflow/hook/model/{model}", ScopeNone(), r.GET(api.getWorkflowHookModelHandler), r.POST(api.postWorkflowHookModelHandler, NeedAdmin(true)), r.PUT(api.putWorkflowHookModelHandler, NeedAdmin(true)))
 
-	// SSE
-	r.Handle("/events", ScopeNone(), r.GET(api.eventsBroker.ServeHTTP))
+	// Websocket
+	r.Handle("/ws", ScopeNone(), r.GET(api.websocketBroker.ServeHTTP))
 
 	// Feature
 	r.Handle("/feature/clean", ScopeNone(), r.POST(api.cleanFeatureHandler, NeedToken("X-Izanami-Token", api.Config.Features.Izanami.Token)))

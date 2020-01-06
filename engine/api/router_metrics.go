@@ -41,13 +41,13 @@ func InitRouterMetrics(s service.NamedService) error {
 			"cds/router_hits",
 			"number of hits",
 			stats.UnitDimensionless)
-		SSEClients = stats.Int64(
-			"cds/sse_clients",
-			"number of sse clients",
+		WebSocketClients = stats.Int64(
+			"cds/websocket_clients",
+			"number of websocket clients",
 			stats.UnitDimensionless)
-		SSEEvents = stats.Int64(
-			"cds/sse_events",
-			"number of sse events",
+		WebSocketEvents = stats.Int64(
+			"cds/websocket_events",
+			"number of websocket events",
 			stats.UnitDimensionless)
 		ServerRequestCount = stats.Int64(
 			"cds/http/server/request_count",
@@ -120,8 +120,8 @@ func InitRouterMetrics(s service.NamedService) error {
 		err = observability.RegisterView(
 			observability.NewViewCount("cds/http/router/router_errors", Errors, []tag.Key{tagServiceType, tagServiceName}),
 			observability.NewViewCount("cds/http/router/router_hits", Hits, []tag.Key{tagServiceType, tagServiceName}),
-			observability.NewViewLast("cds/http/router/sse_clients", SSEClients, []tag.Key{tagServiceType, tagServiceName}),
-			observability.NewViewCount("cds/http/router/sse_events", SSEEvents, []tag.Key{tagServiceType, tagServiceName}),
+			observability.NewViewLast("cds/http/router/websocket_clients", WebSocketClients, []tag.Key{tagServiceType, tagServiceName}),
+			observability.NewViewCount("cds/http/router/websocket_events", WebSocketEvents, []tag.Key{tagServiceType, tagServiceName}),
 			ServerRequestCountView,
 			ServerRequestBytesView,
 			ServerResponseBytesView,

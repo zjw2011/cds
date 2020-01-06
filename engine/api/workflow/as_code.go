@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/ovh/cds/engine/api/operation"
 	"time"
 
 	"github.com/go-gorp/gorp"
@@ -105,10 +106,6 @@ func UpdateAsCode(ctx context.Context, db *gorp.DbMap, store cache.Store, proj *
 	if err := PostRepositoryOperation(ctx, db, *proj, &ope, multipartData); err != nil {
 		return nil, sdk.WrapError(err, "unable to post repository operation")
 	}
-	k := cache.Key(CacheOperationKey, ope.UUID)
-	if err := store.SetWithTTL(k, ope, 300); err != nil {
-		log.Error(ctx, "cannot SetWithTTL: %s: %v", k, err)
-	}
 
 	log.Debug("workflow.UpdateAsCode> ope: %+v", ope)
 
@@ -182,14 +179,11 @@ func SyncAsCodeEvent(ctx context.Context, db gorp.SqlExecutor, store cache.Store
 func UpdateWorkflowAsCodeResult(ctx context.Context, db *gorp.DbMap, store cache.Store, p *sdk.Project, ope *sdk.Operation, wf *sdk.Workflow, u sdk.Identifiable) {
 	counter := 0
 	defer func() {
-		k := cache.Key(CacheOperationKey, ope.UUID)
-		if err := store.SetWithTTL(k, ope, 300); err != nil {
-			log.Error(ctx, "cannot SetWithTTL: %s: %v", k, err)
-		}
+		event.PublishOperationEvent(ctx, p.Key, *ope, u)
 	}()
 	for {
 		counter++
-		if err := GetRepositoryOperation(ctx, db, ope); err != nil {
+		if err := operation.Get(ctx, db, ope); err != nil {
 			log.Error(ctx, "unable to get repository operation %s: %v", ope.UUID, err)
 			continue
 		}
